@@ -30,11 +30,11 @@ class ofApp : public ofBaseApp{
 
 		Placer mylayout;
 
-		ofPtr<TextView>		textbox;
-		ofPtr<NumberDialer>	numbox;
-		ofPtr<Slider>		slider;
-		ofPtr<Label>		sliderLabel;
-		ofPtr<Button>		checkbox;
-		ofPtr<Buttons>		selector;
-		ofPtr<ofxGLVButton> button;
+		shared_ptr<TextView>		textbox;
+		shared_ptr<NumberDialer>	numbox;
+		shared_ptr<Slider>		slider;
+		shared_ptr<Label>		sliderLabel;
+		shared_ptr<Button>		checkbox;
+		shared_ptr<Buttons>		selector;
+		shared_ptr<ofxGLVButton> button;
 };

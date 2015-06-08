@@ -81,26 +81,26 @@ void ofApp::setupGUI()
 
 	// create element
 	{
-		textbox = ofPtr<TextView>(new TextView(Rect(250, 16)));
+		textbox = shared_ptr<TextView>(new TextView(glv::Rect(250, 16)));
 		textbox->setValue("this is a text box");
 	}
 	{
-		numbox = ofPtr<NumberDialer>(new NumberDialer(4, 4, 9999, -9999));
+		numbox = shared_ptr<NumberDialer>(new NumberDialer(4, 4, 9999, -9999));
 		numbox->setValue(50.0);
 	}
 	{
-		sliderLabel = ofPtr<Label>(new Label("Slider Value:"));
-		slider = ofPtr<Slider>(new Slider(Rect(200, 20)));
+		sliderLabel = shared_ptr<Label>(new Label("Slider Value:"));
+		slider = shared_ptr<Slider>(new Slider(glv::Rect(200, 20)));
 		slider->attach(ntSetLabel, Update::Value, &*sliderLabel);
 	}
 	{
-		checkbox = ofPtr<Button>(new Button(Rect(50, 20), false));
+		checkbox = shared_ptr<Button>(new Button(glv::Rect(50, 20), false));
 	}
 	{
-		selector = ofPtr<Buttons>(new Buttons(Rect(80), 2, 2, false, true));
+		selector = shared_ptr<Buttons>(new Buttons(glv::Rect(80), 2, 2, false, true));
 	}
 	{
-		button = ofPtr<ofxGLVButton>(new ofxGLVButton(Rect(80, 30)));
+		button = shared_ptr<ofxGLVButton>(new ofxGLVButton(glv::Rect(80, 30)));
 		ofAddListener(button->buttonEvent, this, &ofApp::buttonHitted);
 	}
 
