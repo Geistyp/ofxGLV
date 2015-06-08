@@ -378,7 +378,7 @@ void polygon(float l, float t, float r, float b){
 
 template<int N, int A>
 void spokes(float l, float t, float r, float b){
-	int N2 = N<<1;
+	const int N2 = N<<1;
 	Point2 pts[N2];
 	float cx = (l+r)/2;
 	float cy = (t+b)/2;

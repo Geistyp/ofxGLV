@@ -4,6 +4,7 @@
 #pragma once
 
 #include "glv.h"
+#include "ofxGLVButton.h"
 using namespace glv;
 
 class ofxGLV
