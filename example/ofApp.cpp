@@ -99,16 +99,26 @@ void ofApp::setupGUI()
 	{
 		selector = ofPtr<Buttons>(new Buttons(Rect(80), 2, 2, false, true));
 	}
+	{
+		button = ofPtr<ofxGLVButton>(new ofxGLVButton(Rect(80, 30)));
+		ofAddListener(button->buttonEvent, this, &ofApp::buttonHitted);
+	}
 
 	// assign to layout
 	mylayout << new Label("Text:") << *textbox
 		<< new Label("Number Dialer:") << *numbox
 		<< *sliderLabel << *slider
 		<< new Label("Check box:") << *checkbox
-		<< new Label("Selector:") << *selector;
+		<< new Label("Selector:") << *selector
+		<< new Label("Button:") << *button;
 }
 
 void ofApp::drawGUI(ofEventArgs & args)
 {
 	myGLV.draw();
+}
+
+void ofApp::buttonHitted(void)
+{
+	//cout << "button press" << endl;
 }

@@ -23,6 +23,8 @@ class ofApp : public ofBaseApp{
 		void setupGUI();
 		void drawGUI(ofEventArgs & args);
 
+		void buttonHitted(void);
+
 		//--
 		ofxGLV myGLV;
 
@@ -34,4 +36,5 @@ class ofApp : public ofBaseApp{
 		ofPtr<Label>		sliderLabel;
 		ofPtr<Button>		checkbox;
 		ofPtr<Buttons>		selector;
+		ofPtr<ofxGLVButton> button;
 };
