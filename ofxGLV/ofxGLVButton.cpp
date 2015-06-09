@@ -2,8 +2,8 @@
 
 namespace glv {
 
-ofxGLVButton::ofxGLVButton(const Rect& r /*= Rect()*/, iconFunc on /*= draw::rectangle*/, iconFunc off /*= 0*/)
-	: Widget(r, 3, true, false, true), mIconOff(off), mIconOn(on)
+	ofxGLVButton::ofxGLVButton(const Rect& r /*= Rect()*/, SymbolFunc on /*= draw::rectangle*/, SymbolFunc off /*= 0*/)
+	: Widget(r, 3, true, false, true), mSymOff(off), mSymOn(on)
 {
 	data().resize(Data::BOOL, 1, 1);
 	useInterval(false);
@@ -22,25 +22,27 @@ void ofxGLVButton::onDraw(GLV& g)
 
 	float xd = dx();
 	float yd = dy();
-	float p1 = padding();
-	float p_2 = padding()*0.5;
+	float padx = paddingX();
+	float pady = paddingY();
 	color(colors().fore);
 
 	// TODO: small buttons hard to see when not antialiased
 	//glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST);
 	//draw::enable(PolygonSmooth);
 
-	float x = 0 + p_2;
-	float y = 0 + p_2;
+	draw::stroke(1);
+
+	float x = padx;
+	float y = pady;
 	if (getValue())
 	{
-		if (mIconOn) 
-			mIconOn(x, y, x + xd - p1, y + yd - p1);
+		if (mSymOn) 
+			mSymOn(x, y, x + xd - padx * 2, y + yd - pady * 2);
 	}
 	else
 	{
-		if (mIconOff) 
-			mIconOff(x, y, x + xd - p1, y + yd - p1);
+		if (mSymOff) 
+			mSymOff(x, y, x + xd - padx * 2, y + yd - pady * 2);
 	}
 
 	//draw::disable(PolygonSmooth);

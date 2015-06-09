@@ -15,20 +15,20 @@ class ofxGLVButton : public Widget
 {
 public:
 	ofxGLVButton(const Rect& r = Rect(),
-		iconFunc on = draw::rectangle, iconFunc off = 0);
+		SymbolFunc on = draw::rectangle, SymbolFunc off = 0);
 	~ofxGLVButton();
 
-	/// Get off state icon
-	const iconFunc& iconOff() const { return mIconOff; }
+	/// Get off state symbol
+	const SymbolFunc& symbolOff() const { return mSymOff; }
 
-	/// Get on state icon
-	const iconFunc& iconOn() const { return mIconOn; }
+	/// Get on state symbol
+	const SymbolFunc& symbolOn() const { return mSymOn; }
 
 	/// Set off state icon
-	ofxGLVButton& iconOff(const iconFunc& f){ mIconOff = f; return *this; }
+	ofxGLVButton& symbol(const SymbolFunc& f){ mSymOff = f; return *this; }
 
 	/// Set on state icon
-	ofxGLVButton& iconOn(const iconFunc& f){ mIconOn = f; return *this; }
+	ofxGLVButton& symbolOn(const SymbolFunc& f){ mSymOn = f; return *this; }
 
 	virtual const char * className() const { return "EventButton"; }
 	virtual void onDraw(GLV& g);
@@ -39,7 +39,7 @@ public:
 	ofEvent<void> buttonEvent;
 
 protected:
-	iconFunc mIconOff, mIconOn;
+	SymbolFunc mSymOff, mSymOn;
 	
 
 };

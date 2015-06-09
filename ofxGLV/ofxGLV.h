@@ -154,7 +154,7 @@ public:
 	{
 		width = w;
 		height = h;
-		mGLV = new GLV(0, width, height);
+		mGLV = new GLV(width, height);
 		RegisterEvents();
 	}
 

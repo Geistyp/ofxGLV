@@ -25,81 +25,104 @@ public:
 	/// @param[in] intervalMax	maximum displayed value for all dimensions
 	/// @param[in] majorDist	distance between major grid lines
 	/// @param[in] minorDiv		number of minor divisions between major lines
-	Grid(const Rect& r, double intervalMin=-1, double intervalMax=1, double majorDist=1, int minorDiv=4);
+	Grid(
+		const Rect& r=Rect(100,100),
+		double intervalMin=-1, double intervalMax=1,
+		double majorDist=1, int minorDiv=4
+	);
 
 	/// Get interval of a dimension
 	const Interval<double>& interval(int dim) const { return mInterval[dim]; }
 	
 	/// Set interval of a dimension
 	Interval<double>& interval(int dim){ return mInterval[dim]; }
-//	double major(int dim) const { return mMajor[i]; }
-//	int minor(int dim) const { return mMinor[i]; }
+
+	/// Get major division diameters
+	const double * major() const { return mMajor; }
+
+	/// Get minor divisions
+	const int * minor() const { return mMinor; }
+
+	/// Get lockScroll booleans
+	const bool * lockScroll() const { return mLockScroll; }
+
+	/// Get lockZoom booleans
+	const bool * lockZoom() const { return mLockZoom; }
+
+	/// Get showAxis booleans
+	const bool * showAxis() const { return mShowAxis; }
+
+	/// Get showGrid booleans
+	const bool * showGrid() const { return mShowGrid; }
+
+	/// Get showNumbering booleans
+	const bool * showNumbering() const { return mShowNumbering; }
 
 	/// Returns whether point is contained within grid region
-	bool contains(double x, double y){
+	bool contains(double x, double y) const {
 		return interval(0).contains(x) && interval(1).contains(y);
 	}
 
-	/// Returns whether axes are showing
-	bool showAxes() const { return mShowAxes; }
 
-	/// Returns whether grid lines are showing
-	bool showGrid() const { return mShowGrid; }
+	/// Set minor division
 
-	/// Returns whether grid line numbering is showing
-	bool showNumbering() const { return mShowNumbering; }
+	/// @param[in] v	number of minor divisions per major division
+	/// @param[in] dim	dimension or -1 for all dimensions
+	Grid& minor(int v, int dim=-1);
 
-	#define LOOP for(int i=0;i<DIM;++i)
-	
-	/// Set whether grid line numbering is active for all dimensions
-	Grid& numbering(bool v){ LOOP{ numbering(v,i); } return *this; }
+	/// Set major division width
 
-	/// Set whether grid line numbering is active for a dimension
-	Grid& numbering(bool v, int dim){ mNumbering[dim]=v; return *this; }
-
-	/// Set minor division for all dimensions
-	Grid& minor(int v){ LOOP{ minor(v,i); } return *this; }
-
-	/// Set minor division for a dimension
-	Grid& minor(int v, int dim){ mMinor[dim]=v; return *this; }
-
-	/// Set major division diameter for all dimensions
-	Grid& major(double v){ LOOP{ major(v,i); } return *this; }
-
-	/// Set major division diameter for a dimension
-	Grid& major(double v, int dim){ mMajor[dim]=v; return *this; }
+	/// @param[in] v	width of major division
+	/// @param[in] dim	dimension or -1 for all dimensions
+	Grid& major(double v, int dim=-1);
 
 	/// Center grid on origin
-	Grid& origin(){ LOOP{ interval(i).center(0); } return *this; }
+	Grid& origin();
 
 	/// Set whether to equalize distances along axes
 	Grid& equalizeAxes(bool v){ mEqualize=v; return *this; }
 
+	/// Set dimension interval to [min, max]
+	
+	/// @param[in] min	minimum value
+	/// @param[in] max	maximum value
+	/// @param[in] dim	dimension or -1 for all dimensions
+	Grid& range(double min, double max, int dim=-1);
+
 	/// Set all dimension intervals to [-v, v]
 	Grid& range(double v){ return range(-v,v); }
 
-	/// Set all dimension intervals to [min, max]
-	Grid& range(double min, double max){ LOOP{ range(min,max, i); } return *this; }
+	/// Set whether to show axis
 	
-	/// Set a dimension's interval to [min, max]
-	Grid& range(double min, double max, int i){ interval(i).endpoints(min,max); return *this; }
-
-	/// Set whether to show axes
-	Grid& showAxes(bool v){ mShowAxes=v; return *this; }
+	/// @param[in] v	whether to show axis
+	/// @param[in] dim	dimension or -1 for all dimensions
+	Grid& showAxis(bool v, int dim=-1);
 	
 	/// Set whether to show grid
-	Grid& showGrid(bool v){ mShowGrid=v; return *this; }
+
+	/// @param[in] v	whether to show grid
+	/// @param[in] dim	dimension or -1 for all dimensions
+	Grid& showGrid(bool v, int dim=-1);
 	
 	/// Set whether to show numbering
-	Grid& showNumbering(bool v){ mShowNumbering=v; return *this; }
+
+	/// @param[in] v	whether to show numbering
+	/// @param[in] dim	dimension or -1 for all dimensions
+	Grid& showNumbering(bool v, int dim=-1);
+
+	/// Set whether to lock interactive scrolling
+	Grid& lockScroll(bool v, int dim=-1);
+
+	/// Set whether to lock zooming
+	Grid& lockZoom(bool v, int dim=-1);
 
 	/// Zoom grid on a point
 	Grid& zoom(double amt, double x, double y);
 
 	virtual bool onEvent(Event::t e, GLV& g);
-	virtual void onAnimate(double dt, GLV& g);
+	virtual void onAnimate(double dt);
 	virtual void onDraw(GLV& g);
-//	virtual void onResize(space_t dx, space_t dy);
+	virtual void onResize(space_t dx, space_t dy);
 	
 protected:
 	typedef Interval<double> interval_t;
@@ -109,8 +132,9 @@ protected:
 	double mMajor[DIM];
 	int mMinor[DIM];
 	float mVel[DIM], mVelW;
-	bool mNumbering[DIM];
-	bool mShowAxes, mShowGrid, mShowNumbering, mEqualize;
+	bool mShowAxis[DIM], mShowGrid[DIM], mShowNumbering[DIM], mEqualize;
+	bool mLockZoom[DIM];
+	bool mLockScroll[DIM];
 
 	int addGridLines(int i, double dist, GraphicsData& gb);
 
@@ -127,22 +151,10 @@ protected:
 	}
 	double pixToGridMul(int i, double v){ return (interval(i).diameter()/extentVector[i])*v; }
 
-	// push into grid space for drawing
-	void pushGrid(){
-		float tx = gridToPix(0, 0);
-		float ty = gridToPix(1, 0);
-		float sx = gridToPix(0, interval(0).min()+1);
-		float sy = gridToPix(1, interval(1).min()+1);
-		draw::push();
-		draw::translate(tx, ty);
-		draw::scale(sx,sy-h);
-	}
-
-	// pop out of grid space
-	void popGrid(){ draw::pop(); }
+	void pushGrid();	// push into grid space for drawing
+	void popGrid();		// pop out of grid space
 
 	void zoomOnMousePos(double amt, const Mouse& m);
-	#undef LOOP
 };
 
 } // glv::

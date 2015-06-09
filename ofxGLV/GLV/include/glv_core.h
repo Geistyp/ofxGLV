@@ -7,8 +7,9 @@
 #include <map>
 #include <string>
 #include <list>
+#include <vector>
 #include "glv_rect.h"
-#include "glv_observer_pattern.h"
+#include "glv_notification.h"
 #include "glv_color.h"
 #include "glv_draw.h"
 #include "glv_font.h"
@@ -26,19 +27,38 @@ typedef float space_t;
 /// Type for View rectangle geometry
 typedef TRect<space_t> Rect;
 
-/// Type for a drawing callback
-typedef void (*drawCallback)(View * v, GLV& g);
 
-/// Type for an event callback
+/// Draw handler
+struct DrawHandler{
+	virtual ~DrawHandler(){}
+	
+	/// Drawing callback. Returns whether to execute subsequent handlers.
+	virtual bool onDraw(View& v, GLV& g) = 0;
+};
 
-/// The first parameter is the View receiving the event and the second is the
-/// GLV context sending the event.  The function returns true if the event is
-/// to be bubbled up to the receiver's parent View.
-typedef bool (*eventCallback)(View * v, GLV& g);
 
-/// Type for a list of event callbacks
-typedef std::list<eventCallback> eventCallbackList;
+/// Event handler
+struct EventHandler{
+	virtual ~EventHandler(){}
+	
+	/// Event callback
 
+	/// The first parameter is the View receiving the event and the second is the
+	/// GLV context sending the event.  The function returns true if the event is
+	/// to be bubbled up to the receiver's parent View.
+	virtual bool onEvent(View& v, GLV& g) = 0;
+};
+
+
+/// Event handler that calls a pure function
+struct CEventHandler : public EventHandler{
+	typedef bool (* EventFunction)(View& v, GLV& g);
+
+	CEventHandler(EventFunction func): function(func){}
+	virtual bool onEvent(View& v, GLV& g){ return function(v,g); }
+
+	EventFunction function;
+};
 
 
 /// View property flags
@@ -58,16 +78,18 @@ namespace Property{
 		Maximized		=1<<11, /**< Whether geometry is matched to parent's */
 		KeepWithinParent=1<<12, /**< Ensure that View is fully contained within parent */
 		Animate			=1<<13, /**< Whether to animate */
-		
+//		AlwaysOnTop		=1<<14, /**< Whether to always be on top of other views */
+
 		DrawGrid		=1<<27,	/**< Whether to draw grid lines between widget elements */
 		DrawSelectionBox=1<<28,	/**< Whether to draw a box around selected widget elements */
 		Momentary		=1<<29,	/**< Whether widget element goes back to initial value on mouse up */
 		MutualExc		=1<<30,	/**< Whether only one element of a widget can be non-zero */
 		SelectOnDrag	=1<<31,	/**< Whether a new element of a widget is selected while dragging */
 	};
-	inline t operator| (const t& a, const t& b){ return t(int(a) | int(b)); }
-	inline t operator& (const t& a, const t& b){ return t(int(a) & int(b)); }
-	inline t operator^ (const t& a, const t& b){ return t(int(a) ^ int(b)); }
+
+	inline t operator| (const t& a, const t& b){ return static_cast<t>(+a | +b); }
+	inline t operator& (const t& a, const t& b){ return static_cast<t>(+a & +b); }
+	inline t operator^ (const t& a, const t& b){ return static_cast<t>(+a ^ +b); }
 };
 
 using namespace Property;
@@ -121,6 +143,8 @@ namespace Event{
 		KeyUp,			/**< Keyboard key released */
 		KeyRepeat,		/**< Keyboard key auto-repeated */
 		
+//		ValueChanged,	TODO: not system event, but could replace notifications
+		
 		// window events
 	//	WindowActivated,	
 	//	WindowDeactivated,
@@ -140,7 +164,7 @@ namespace Key{
 		
 		// Standard ASCII non-printable characters
 		Enter		=3,		/**< */
-		BackSpace	=8,		/**< */
+		Backspace	=8,		/**< */
 		Tab			=9,		/**< */
 		Return		=13,	/**< */
 		Escape		=27,	/**< */
@@ -189,6 +213,7 @@ public:
 	bool shift() const;		///< Whether a shift key is down
 	bool isDown() const;	///< Whether last event was button down
 	bool isNumber() const;	///< Whether key is a number key
+	bool isPrint() const;	///< Whether key is a printable character
 	bool key(int k) const;	///< Whether the last key was 'k'
 
 	void alt  (bool v);		///< Set alt key state
@@ -197,7 +222,7 @@ public:
 	void meta (bool v);		///< Set meta key state
 	void shift(bool v);		///< Set shift key state
 
-	void print();			///< Print keyboard state to stdout
+	void print() const;		///< Print keyboard state to stdout
 
 protected:
 	int	mKeycode;			// last key event key number
@@ -245,12 +270,13 @@ public:
 	int button() const;				///< Last event button number
 	int clicks() const;				///< Number of sequential clicks of buttons
 	bool isDown() const;			///< Whether last event was button down
-	bool isDown(int button) const;	///< Whether button is currently down
+	bool isDown(int button) const;	///< Whether specified button is currently down
+	bool isDownAny() const;			///< Whether any button is currently down
 	bool left() const;				///< Whether left button is currently down
 	bool middle() const;			///< Whether middle button is currently down
 	bool right() const;				///< Whether right button is currently down
 	
-	float sens() const { return (left() && right()) ? 0.25 : 1; }
+	float sens() const { return (left() && right()) ? 0.25f : 1; }
 
 	void print() const;				///< Print out information about Mouse to stdout
 
@@ -306,7 +332,7 @@ public:
 	void set(Preset preset);
 	
 	/// Set style based on a single color
-	void set(const Color& c, float contrast=0.4);
+	void set(const Color& c, float contrast=0.7);
 };
 
 //class StyleShape{
@@ -317,7 +343,7 @@ public:
 //};
 
 
-/// Overall appearance scheme.
+/// Overall appearance scheme
 class Style : public SmartPointer{
 public:
 	Style(bool deletable=false);
@@ -337,92 +363,115 @@ public:
 
 
 
-/// The base class of all GUI elements.
-class View : public Rect, public DataModel, public Notifier, public SmartObject<View> {
+/// The base class of all GUI elements
 
-friend class GLV;
-
+///
+///
+class View
+:	public Rect,
+	public Model,
+	public Notifier,
+	public SmartObject<View>
+{
 public:
 
-	/// @param[in] left		Initial left edge position
-	/// @param[in] top		Initial top edge position
-	/// @param[in] width	Initial width
-	/// @param[in] height	Initial height
-	/// @param[in] cb		Drawing callback
-	View(space_t left, space_t top, space_t width, space_t height, drawCallback cb=0);
+	/// Ordered list of draw handlers
+	typedef std::list<DrawHandler *> DrawHandlers;
 
-	
+	/// Ordered list of event handlers
+	typedef std::list<EventHandler *> EventHandlers;
+
+
 	/// @param[in] rect		Rect geometry of View
 	/// @param[in] anchor	Anchor place
-	/// @param[in] cb		Drawing callback
-	View(const Rect& rect=Rect(200, 200), Place::t anchor=Place::TL, drawCallback cb=0);
+	View(const Rect& rect=Rect(200, 200), Place::t anchor=Place::TL);
 
 	virtual ~View();
 
-	virtual const char * className() const { return "View"; } ///< Get class name
-	virtual void onAnimate(double dsec, GLV& g){}	///< Animation callback
-	virtual void onDraw(GLV& g);					///< Drawing callback
-	virtual bool onEvent(Event::t e, GLV& g);		///< Event callback to be called after those in callback list
-	virtual void onResize(space_t dx, space_t dy);	///< Resize callback
-	virtual void onDataModelSync(){}				///< Update internal values if different from attached model variables
+
+	/// Get class name
+	virtual const char * className() const { return "View"; }
+
+	/// Animation callback
+
+	/// This is called once before the drawing callback and is where the View's
+	/// model state should be updated.
+	///
+	/// @param[in] dsec		Number of seconds elapsed since last animation frame
+	virtual void onAnimate(double dsec){}
+
+	/// Drawing callback
+	virtual void onDraw(GLV& g){}
+
+	/// Event callback to be called after those in callback list
+
+	/// @param[in] e	The event that triggered the callback
+	/// @param[in] g	Top GLV object (for access to keyboard and mouse)
+	/// \returns whether event should be bubbled to parent. Normally, events
+	/// that are not handled by a View should be bubbled to its parent.
+	virtual bool onEvent(Event::t e, GLV& g){return true;}
+
+	/// Resize callback called when the parent changes size
+	virtual void onResize(space_t dx, space_t dy){}
+
+	/// Update internal values if different from attached model variables
+	virtual void onDataModelSync(){}
+
 
 	// Doubly linked tree list of views
 	// TODO: move this stuff to a Node sub-class
 	View * parent;				///< My parent view
 	View * child;				///< My first child (next to be drawn)
 	View * sibling;				///< My next sibling view (drawn after all my children)
-	void add(View& child);		///< Add a child view to myself, and update linked lists
-	void add(View* child);		///< Add a child view to myself, and update linked lists
+
+	View& add(View& child);		///< Add a child view to myself, and update linked lists
+	View& add(View* child);		///< Add a child view to myself, and update linked lists
 	void makeLastSibling();		///< Put self at end of sibling chain
 	void remove();				///< Remove myself from the parent view, and update linked lists
+	View& root();				///< Returns topmost View, possibly self
+
+	/// Add a child view to myself, alias of add()
+	View& operator << (View& child){ return add(child); }
+	
+	/// Add a child view to myself, alias of add()
+	View& operator << (View* child){ return add(child); }
+
 
 	/// An action to be called when traversing the node tree
 	struct TraversalAction{
 		virtual ~TraversalAction(){}
+
+		/// Called on visiting a node
+
+		/// @param[in] v		The node being visited
+		/// @param[in] depth	The depth of the node
 		virtual bool operator()(View * v, int depth) = 0;
 	};
 	struct ConstTraversalAction{
 		virtual ~ConstTraversalAction(){}
-		virtual bool operator()(const View * v, int depth) = 0;
+		virtual bool operator()(const View * v, int depth) const = 0;
 	};
 
 	/// Traverse tree depth-first applying an action at each node
 	void traverseDepth(TraversalAction& action);
-	void traverseDepth(ConstTraversalAction& action) const;
+	void traverseDepth(const ConstTraversalAction& action) const;
 
-	/// Add a child view to myself
-	View& operator << (View& newChild){ add(newChild); return *this; }
-	View& operator << (View* newChild){ add(newChild); return *this; }
+	/// Fill array with children satisfying predicate
+	void getChildren(std::vector<View*>& children, TraversalAction& predicate);
 
-	
-	/// Map of event callback sequences.
-	std::map<Event::t, eventCallbackList> callbackLists;
-	
-	drawCallback draw;		///< Drawing callback
-	
-	
-	bool absToRel(View * target, space_t& x, space_t& y) const;
-	StyleColor& colors() const;					///< Get style colors
-	const std::string& descriptor() const;		///< Get descriptor
-	int enabled(Property::t v) const;			///< Returns whether a property is set
-	Font& font();								///< Get font
-	bool hasCallback(Event::t e, eventCallback cb) const; ///< Returns whether a particular callback has been registered
-	bool hasCallbacks(Event::t e) const;		///< Returns whether there are callback(s) registered for a particular event
-	const std::string& name() const;			///< Get name
-	int numCallbacks(Event::t e) const;			///< Returns number of registered callbacks
-	const View * posAbs(space_t& al, space_t& at) const; ///< Computes absolute left-top position. Returns topmost parent view.
-	void printDescendents() const;				///< Print tree of descendent Views to stdout
-	void printFlags() const;
-	bool showing() const;						///< Returns whether View is being shown
-	Style& style() const { return *mStyle; }	///< Get style object
-	const View * toAbs(space_t& x, space_t& y) const; ///< Converts relative View x-y coordinates to absolute. Returns topmost parent view.
-	std::string valueString() const;			/// Returns model value(s) as string
-	int visible() const;						///< Returns whether View visibility flag is set
+	/// Fill array with descendents satisfying predicate
+	void getDescendents(std::vector<View*>& descendents, TraversalAction& predicate);
 
-	View& anchor(space_t mx, space_t my);		///< Set translation factors relative to parent resize amount
-	View& anchor(Place::t parentPlace);			///< Set translation factors relative to parent resize amount
+	/// Append draw handler
 
-	/// Push an event callback onto the back of the event callbacks list.
+	/// When the View is drawn, first its draw handlers are executed in sequence
+	/// then its virtual onDraw(). The return value of the draw handlers
+	/// determine whether subsequent handlers should be called. The return
+	/// value of the last handler determines whether the virtual onDraw()
+	/// should be called.
+	View& addHandler(DrawHandler& v);
+
+	/// Append event handler
 
 	/// If the event callback already exists in the list, then it will be not be
 	/// added.
@@ -430,9 +479,50 @@ public:
 	/// types of prioritization take place. First, callbacks on the front of the
 	/// list get called first. Second, if a callback returns false (for 
 	/// bubbling), then it cancels execution of any subsequent callbacks in the
-	/// list.
-	void addCallback(Event::t type, eventCallback cb);
-	View& operator()(Event::t e, eventCallback cb){ addCallback(e, cb); return *this; }
+	/// list. The return value of the last handler determines whether the 
+	/// virtual onEvent() should be called.
+	View& addHandler(Event::t e, EventHandler& h);
+	
+	/// Remove draw handler
+	void removeHandler(DrawHandler& v);
+
+	/// Remove event handler
+	void removeHandler(Event::t e, EventHandler& h);
+
+	/// Returns whether a particular event handler has been registered
+	bool hasEventHandler(Event::t e, const EventHandler& h) const;
+	
+	/// Returns whether there are one or more event handlers registered for a particular event	
+	bool hasEventHandlers(Event::t e) const;
+	
+	/// Returns number of registered event handlers
+	int numEventHandlers(Event::t e) const;
+
+	
+	bool absToRel(View * target, space_t& x, space_t& y) const;
+	StyleColor& colors() const;					///< Get style colors
+	const std::string& descriptor() const;		///< Get descriptor
+	int enabled(Property::t v) const;			///< Returns whether a property is set
+	Font& font();								///< Get font
+	const std::string& name() const;			///< Get name
+	const View * posAbs(space_t& al, space_t& at) const; ///< Computes absolute left-top position. Returns topmost parent view.
+	void printDescendents() const;				///< Print tree of descendent Views to stdout
+	void printFlags() const;
+	bool showing() const;						///< Returns whether View is being shown
+	Style& style() const { return *mStyle; }	///< Get style object
+	const View * toAbs(space_t& x, space_t& y) const; ///< Converts relative View x-y coordinates to absolute. Returns topmost parent view.
+	Rect unionOfChildren() const;				///< Returns rectangular union of all children
+	std::string valueString() const;			/// Returns model value(s) as string
+	int visible() const;						///< Returns whether View visibility flag is set
+	Rect visibleRegion() const;					///< Returns visible region in relative coordinates
+
+	space_t anchorX() const { return mAnchorX; }
+	space_t anchorY() const { return mAnchorY; }
+	space_t stretchX() const { return mStretchX; }
+	space_t stretchY() const { return mStretchY; }
+
+	View& anchor(space_t mx, space_t my);		///< Set translation factors relative to parent resize amount
+	View& anchor(Place::t parentPlace);			///< Set translation factors relative to parent resize amount
 
 	View& disable(Property::t p);				///< Disable property flag(s)
 	View& enable(Property::t p);				///< Enable property flag(s)
@@ -445,24 +535,28 @@ public:
 
 
 	/// Returns View under these absolute coordinates or 0 if none.
-	
+
 	/// The coordinates are modified to be relative to the returned View's.
 	///
 	View * findTarget(space_t& x, space_t& y);
 
-	void fit();									///< Fit geometry so all children are visible
-	void focused(bool b);						///< Set whether I'm focused
-	void move(space_t x, space_t y);			///< Translate constraining within parent.
-	
-	void on(Event::t e, eventCallback cb=0);	///< Set first callback for a specific event type.
-	void removeCallback(Event::t e, eventCallback cb);	///< Remove a callback for a given event (if found)
-	void removeAllCallbacks(Event::t e);		///< Detach all callbacks for a given event	
+	/// Fit geometry so all children are visible
+
+	/// This uses the geometric union of all the children to resize the extent
+	/// of the view.
+	///
+	/// @param[in] moveChildren		If true, children are moved to fit within
+	///								the current view. If false, the view is set
+	///								to the union of the children.
+	void fit(bool moveChildren=true);
+
+	void move(space_t x, space_t y);			///< Translate constraining within parent
 
 	/// Set descriptor, e.g. tooltip text
 	View& descriptor(const std::string& v);
 
 	/// Set identifier string
-	
+
 	/// The name should follow the same conventions as identifiers in C. I.e.,
 	/// it can be any string of letters, digits, and underscores, not beginning 
 	/// with a digit. If the argument is not a valid identifier, then the
@@ -480,19 +574,45 @@ public:
 
 	void rectifyGeometry();						///< Correct geometry for proper display 
 
+	/// Add models of all named child Views to model manager
+	void addModels(ModelManager& m);
+
 protected:
+	friend class GLV;
+	typedef std::map<Event::t, EventHandlers> EventHandlersMap;
+	
+	DrawHandlers mDrawHandlers;
+	Lazy<EventHandlersMap> mEventHandlersMap;
 	Property::t mFlags;				// Property flags
 	Style * mStyle;					// Visual appearance
 	space_t mAnchorX, mAnchorY;		// Position anchoring factors when parent is resized
-	space_t mStretchX, mStretchY;	// Stretch factors when parent is resized
-	Rect mRestore;					// Restoration geometry
+	space_t mStretchX, mStretchY;	// Stretch factors when parent is resized				
 	std::string mName;				// Settable name identifier
 	std::string mDescriptor;		// String describing view
-	Font * mFont;					// constructed on first use
+
+//	space_t mScale;
+//	space_t mTranslate[2];
+//
+//	void transform(space_t& x, space_t& y) const {
+//		x = x*mScale + mTranslate[0];
+//		y = y*mScale + mTranslate[1];
+//	}
+//	
+//	void untransform(space_t& x, space_t& y) const {
+//		x = (x - mTranslate[0])/mScale;
+//		y = (y - mTranslate[1])/mScale;
+//	}
 
 	void doDraw(GLV& g);
+//	bool doEventHandlers(View& v, Event::t e);
 	bool hasName() const { return ""!=mName; }
 	void reanchor(space_t dx, space_t dy);	// Reanchor when parent resizes
+	void focused(bool b);					// Set whether I'm focused
+
+private:
+	Lazy<Rect> mRestoreRect;		// Restoration geometry
+	Lazy<Font> mFont;
+	virtual void onResizeRect(space_t dx, space_t dy);
 };
 
 
@@ -502,17 +622,28 @@ protected:
 /// The GLV is the topmost view that serves as an interface between OS events
 /// (windowing, device input) and GLV events. The GLV is responsible for sending
 /// events to views and rendering the GUI.
+/// Before rendering the GUI, some specific GL state is set. Depth testing is
+/// turned off, blending is turned on, the viewport is set to the size of the
+/// GLV and the current projection and modelview matrices on the stack are 
+/// overwritten. For efficiency reasons, the existing GL state is simply
+/// overwritten, i.e., there is no pushing/popping of any relevant matrices or 
+/// attributes. If a 3D scene is being rendered before the GUI, then the 
+/// aforementioned GL state needs to be reinitialized properly before rendering
+/// the scene on the next frame.
 class GLV : public View{
 public:
 
-	/// @param[in] drawFunc		drawing callback
-	/// @param[in] width		width
-	/// @param[in] height		height
-	GLV(drawCallback drawFunc=0, space_t width=800, space_t height=600);
+	/// Constructor
+
+	/// @param[in] width		width, in pixels
+	/// @param[in] height		height, in pixels
+	///
+	/// Note that in practice, the dimensions of this view will usually match 
+	/// the dimensions of the window it is attached to.
+	GLV(space_t width=0, space_t height=0);
 
 	virtual ~GLV();
 
-	virtual const char * className() const { return "GLV"; }
 
 	const Keyboard& keyboard() const { return mKeyboard; };	///< Get current keyboard state
 	const Mouse& mouse() const { return mMouse; }			///< Get current mouse state
@@ -525,20 +656,25 @@ public:
 	View * focusedView() const { return mFocusedView; }
 
 	/// Get reference to temporary graphics data for rendering
-	GraphicsData& graphicsData(){ return mGraphicsData; }
+	GraphicsData& graphicsData(int i=0){ return mGraphicsData[i]; }
 
 
 	/// Sends an event to everyone in tree (including self)
 	void broadcastEvent(Event::t e);
 	
-	/// GLV MAIN RENDER LOOP: draw all Views in the GLV
+	/// Draw all Views in the GLV
 
-	/// The assumption is that we are inside an OpenGL context of size [w, h]
-	/// dsec is the time, in seconds, from the last frame
-	virtual void drawGLV(unsigned int w, unsigned int h, double dsec);
+	/// @param[in] contextWidth		width of context, in pixels
+	/// @param[in] contextHeight	height of context, in pixels
+	/// @param[in] dsec				change in seconds from last call to this method
+	virtual void drawGLV(unsigned contextWidth, unsigned contextHeight, double dsec);
 	
-	/// Draws all acive widgest in the GLV
-	void drawWidgets(unsigned int w, unsigned int h, double dsec);
+	/// Draws all active widgets in the GLV
+	
+	/// @param[in] contextWidth		width of context, in pixels
+	/// @param[in] contextHeight	height of context, in pixels
+	/// @param[in] dsec				change in seconds from last call to this method
+	void drawWidgets(unsigned contextWidth, unsigned contextHeight, double dsec);
 	
 	/// Set event type to propagate
 	void eventType(Event::t e){ mEventType = e; }
@@ -557,6 +693,9 @@ public:
 	
 	/// Sets keyboard and GLV event state
 	void setKeyUp(int keycode);
+	
+	/// Sets keyboard modifiers
+	void setKeyModifiers(bool shift, bool alt, bool ctrl, bool caps, bool meta);
 	
 	/// Set state from mouse down event
 	
@@ -602,7 +741,9 @@ public:
 	ModelManager& modelManager(){ return mMM; }
 
 	/// Add models of named children to model manager
-	void refreshModels();
+	void refreshModels(bool clearExistingModels=false);
+
+	virtual const char * className() const { return "GLV"; }
 
 protected:
 	Keyboard mKeyboard;
@@ -611,7 +752,7 @@ protected:
 	View * mFocusedView;	// current focused widget
 	Event::t mEventType;	// current event type
 	ModelManager mMM;
-	GraphicsData mGraphicsData;
+	GraphicsData mGraphicsData[2];
 
 	// Returns whether the event should be bubbled to parent
 	bool doEventCallbacks(View& target, Event::t e);
@@ -645,7 +786,8 @@ inline View& View::descriptor(const std::string& v){ mDescriptor=v; return *this
 inline int Keyboard::key() const { return mKeycode; }
 inline int Keyboard::keyAsNumber() const { return key() - 48; }
 inline bool Keyboard::isDown() const { return mIsDown; }
-inline bool Keyboard::isNumber() const { return (key() >= '0') && (key() <= '9'); }
+inline bool Keyboard::isNumber() const {return (key() >= '0') && (key() <= '9'); }
+inline bool Keyboard::isPrint() const { return (key() >= ' ') && (key() <= '~'); }
 inline bool Keyboard::alt()   const { return mModifiers[1]; }
 inline bool Keyboard::caps()  const { return mModifiers[3]; }
 inline bool Keyboard::ctrl()  const { return mModifiers[2]; }

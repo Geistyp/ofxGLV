@@ -8,21 +8,60 @@ namespace glv{
 
 Texture2::Texture2(GLsizei w_, GLsizei h_, GLenum format, GLenum type)
 :	mID(0), w(0), h(0), mPixels(0), mBuffer(0),
-	mFormat(format), mType(type), mMagFilter(GL_LINEAR)
+	mFormat(format), mType(type), mMagFilter(GL_LINEAR), mWrapMode(GL_CLAMP_TO_EDGE)
 {
-	alloc(w_,h_);
+	mUpdateRegion[0] = mUpdateRegion[1] =  0;
+	mUpdateRegion[2] = mUpdateRegion[3] = -1;
+	alloc(w_, h_);
 }
 
 Texture2::Texture2(GLsizei w, GLsizei h, GLvoid * pixs, GLenum format, GLenum type, bool doesLoad)
 :	mID(0), w(w), h(h), mPixels(pixs), mBuffer(0),
-	mFormat(format), mType(type), mMagFilter(GL_LINEAR)
+	mFormat(format), mType(type), mMagFilter(GL_LINEAR), mWrapMode(GL_CLAMP_TO_EDGE)
 {
+	mUpdateRegion[0] = mUpdateRegion[1] =  0;
+	mUpdateRegion[2] = mUpdateRegion[3] = -1;
 	if(doesLoad) create(w, h, mPixels);
 }
 
 Texture2::~Texture2(){
 	destroy();
 	dealloc();
+}
+
+static int compsInFormat(GLenum format){
+	switch(format){
+		case GL_RGB:				return 3;
+		case GL_RGBA:				return 4;
+		case GL_LUMINANCE:	
+	/* not ES compatible
+		case GL_RED:
+		case GL_GREEN:
+		case GL_BLUE:
+	 */
+		case GL_ALPHA:				return 1;
+		case GL_LUMINANCE_ALPHA:	return 2;
+		default:					return 1;
+	};
+}
+
+static int bytesInType(GLenum type){
+	#define CS(a,b) case a: return sizeof(b);
+	switch(type){
+		CS(GL_BYTE, char)
+		CS(GL_UNSIGNED_BYTE, unsigned char)
+		CS(GL_SHORT, short)
+		CS(GL_UNSIGNED_SHORT, unsigned short)
+	/* not ES compatible
+		CS(GL_INT, int)
+		CS(GL_UNSIGNED_INT, unsigned int)
+		CS(GL_DOUBLE, double)
+	 */
+		CS(GL_FLOAT, float)
+		default:
+			return 1;
+	};
+	#undef CS
 }
 
 int Texture2::alloc(int w_, int h_){
@@ -33,33 +72,9 @@ int Texture2::alloc(int w_, int h_){
 	if(Nnew != Nold){
 		dealloc();
 
-		int N=1;
-		switch(mFormat){
-			case GL_RGB:				N=3; break;
-			case GL_RGBA:				N=4; break;
-			case GL_LUMINANCE:	
-			case GL_RED:
-			case GL_GREEN:
-			case GL_BLUE:
-			case GL_ALPHA:				N=1; break;
-			case GL_LUMINANCE_ALPHA:	N=2; break;
-		};
-		
-		N *= Nnew;
+		int N = compsInFormat(mFormat) * Nnew;
 
-		#define CS(a,b) case a: Nbytes=N*sizeof(b); mBuffer = malloc(Nbytes); break;
-		switch(mType){
-			CS(GL_BYTE, char)
-			CS(GL_UNSIGNED_BYTE, unsigned char)
-			CS(GL_SHORT, short)
-			CS(GL_UNSIGNED_SHORT, unsigned short)
-			CS(GL_INT, int)
-			CS(GL_UNSIGNED_INT, unsigned int)
-			CS(GL_FLOAT, float)
-			CS(GL_DOUBLE, double)
-			default:;
-		};
-		#undef CS
+		mBuffer = malloc(N*bytesInType(mType));
 
 		if(mBuffer){
 			mPixels = mBuffer;
@@ -83,8 +98,8 @@ void Texture2::dealloc(){
 		w=h=0;
 	}
 }
-
-void Texture2::begin() const { glBindTexture(GL_TEXTURE_2D, id()); }
+  
+void Texture2::begin() const { glBindTexture(GL_TEXTURE_2D, (GLuint)id()); }
 void Texture2::end() const { glBindTexture(GL_TEXTURE_2D, 0); }
 
 Texture2& Texture2::bind(){ begin(); return *this; }
@@ -94,18 +109,22 @@ Texture2& Texture2::create(GLsizei width, GLsizei height, GLvoid * pixs){
 		w = width;
 		h = height;
 		mPixels = pixs;
-
-		destroy();
-		glGenTextures(1, &mID); //printf("%i\n", mID);
-		bind();
-		//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, mFormat, mType, mPixels);
-		glTexImage2D(GL_TEXTURE_2D, 0, mFormat, w, h, 0, mFormat, mType, mPixels);
-		sendParams();
+		recreate();
 	}
 	return *this;
 }
 
 Texture2& Texture2::create(){ create(w,h, mPixels); return *this; }
+
+Texture2& Texture2::recreate(){
+	destroy();
+	glGenTextures(1, &mID); //printf("%i\n", mID);
+	bind();
+	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, mFormat, mType, mPixels);
+	glTexImage2D(GL_TEXTURE_2D, 0, mFormat, w, h, 0, mFormat, mType, mPixels);
+	sendParams();
+	return *this;
+}
 
 void Texture2::destroy(){
 	if(id()){
@@ -132,11 +151,12 @@ Texture2& Texture2::draw(
 	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 //	glDisableClientState(GL_VERTEX_ARRAY);
 	return *this;
+
 }
 
 Texture2& Texture2::format(GLenum v){ mFormat=v; return *this; }
-
 Texture2& Texture2::magFilter(GLenum v){ mMagFilter=v; return *this; } 
+Texture2& Texture2::wrapMode(GLenum v){ mWrapMode=v; return *this; } 
 
 Texture2& Texture2::send(){
 
@@ -147,7 +167,31 @@ Texture2& Texture2::send(){
 							GLenum format, GLenum type,
 							const GLvoid *pixels ) */
 	sendParams();
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, mFormat, mType, mPixels);
+
+	int tx = mUpdateRegion[0];
+	int ty = mUpdateRegion[1];
+
+	int tw = mUpdateRegion[2];
+	if(tw < 0) tw = w+1+tw;
+	int th = mUpdateRegion[3];
+	if(th < 0) th = h+1+th;
+	
+	int bytesPerTexel = compsInFormat(mFormat) * bytesInType(mType);
+
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, w);
+
+	glTexSubImage2D(
+		GL_TEXTURE_2D, 0,
+		tx, ty,
+		tw, th,
+		mFormat, mType, (GLvoid*)((char*)mPixels + (ty*w + tx)*bytesPerTexel)
+	);
+	
+	// change back to defaults
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+
 	return *this;
 }
 
@@ -155,8 +199,18 @@ void Texture2::sendParams(){
 //	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mMagFilter);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mMagFilter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, mWrapMode);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, mWrapMode);
 }
 
 Texture2& Texture2::type(GLenum v){ mType=v; return *this; }
+
+Texture2& Texture2::updateRegion(int ux, int uy, int uw, int uh){
+	mUpdateRegion[0]=ux;
+	mUpdateRegion[1]=uy;
+	mUpdateRegion[2]=uw;
+	mUpdateRegion[3]=uh;
+	return *this;
+}
 
 } // glv::

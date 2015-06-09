@@ -37,16 +37,23 @@ StyleColor::StyleColor(){
 
 void StyleColor::set(Preset preset){
 	switch(preset){
-		case BlackOnWhite:	back.set(1.0); border.set(0); fore.set(0.5); 
+//		case BlackOnWhite:	back.set(1.0); border.set(0); fore.set(0.5); 
+//							selection.set(0.7); text.set(0);
+//							break;
+//		case WhiteOnBlack:	back.set(0.0); border.set(1); fore.set(0.5);
+//							selection.set(0.2); text.set(1);
+//							break;
+		case BlackOnWhite:	back.set(1); border.set(0.4); fore.set(0); 
 							selection.set(0.7); text.set(0);
+							break;
+		case WhiteOnBlack:	back.set(0); border.set(0.5); fore.set(1);
+							selection.set(0.2); text.set(1);
 							break;
 		case Gray:			back.set(0.6); border.set(0.1); fore.set(0.8);
 							selection.set(0.8); text.set(0);
 							break;
-		case SmokyGray:		set(Color(0.7, 0.5), 0.3); break;
-		case WhiteOnBlack:	back.set(0.0); border.set(1); fore.set(0.5);
-							selection.set(0.2); text.set(1);
-							break;
+		case SmokyGray:		set(Color(0.6, 0.7), 0.4); break;
+
 		default:;
 	}
 }

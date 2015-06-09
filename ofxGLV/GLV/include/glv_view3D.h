@@ -16,33 +16,37 @@ public:
 	View3D(const Rect& r=Rect(0));
 	virtual ~View3D(){}
 
+	virtual const char * className() const { return "View3D"; }
+
 	/// 2D drawing callback called after 3D
 	virtual void onDraw2D(GLV& g){}
 	
 	/// 3D drawing callback
 	virtual void onDraw3D(GLV& g){}
 
-	double far() const { return mFar; }			///< Get far clip distance
-	double near() const { return mNear; }		///< Get near clip distance
-	double fovy() const { return mFOVY; }		///< Get field of view angle, in degrees, in the y direction
+	float far() const { return mFar; }			///< Get far clip distance
+	float near() const { return mNear; }		///< Get near clip distance
+	float fovy() const { return mFOVY; }		///< Get field of view angle, in degrees, in the y direction
 
-	void far(double v){ mFar=v; }				///< Set far clip distance
-	void near(double v){ mNear=v; }				///< Set near clip distance
-	void fovy(double v){ mFOVY=v; }				///< Set field of view angle, in degrees, in the y direction
+	void far(float v){ mFar=v; }				///< Set far clip distance
+	void near(float v){ mNear=v; }				///< Set near clip distance
+	void fovy(float v){ mFOVY=v; }				///< Set field of view angle, in degrees, in the y direction
 
 	/// Set 4x4 model transform matrix (column-major)
 	template <class T>
-	void matrix(T * mat4x4){
-		for(int i=0; i<16; ++i) mMatrix[i]=mat4x4[i];
+	void modelView(T * mat4x4){
+		for(int i=0; i<16; ++i) mModelView[i]=mat4x4[i];
 	}
 	
 	/// Get 4x4 model transform matrix
-	double * matrix(){ return mMatrix; }
+	float * modelView(){ return mModelView; }
+
+	void resetModelView();
 
 protected:
 	virtual void onDraw(GLV& g);
-	double mNear, mFar, mFOVY;
-	double mMatrix[16];
+	float mNear, mFar, mFOVY;
+	float mModelView[16];
 	
 //	struct ViewModel : public Model{
 //		ViewModel(View3D& self): v(self){}

@@ -4,12 +4,14 @@
 /*	Graphics Library of Views (GLV) - GUI Building Toolkit
 	See COPYRIGHT file for authors and license information */
 
+#include "glv_draw.h"
+
 namespace glv{
 
 /// Font
 class Font{
 public:
-	Font(unsigned size=8);
+	Font(float size=8);
 	
 	virtual ~Font();
 
@@ -23,8 +25,9 @@ public:
 	virtual void getBounds(float& w, float& h, const char * text) const;
 
 	/// Render text string
-	virtual void render(const char * text, float x=0, float=0, float z=0);
+	virtual void render(const char * text, float x=0, float y=0, float z=0) const;
 
+	virtual void render(GraphicsData& g, const char * text, float x=0, float y=0, float z=0) const;
 
 	/// Set spacing, in ems, between the left and right edges of successive letters
 	Font& letterSpacing(float v);
@@ -33,7 +36,7 @@ public:
 	Font& lineSpacing(float v);
 
 	/// Set the font size in pixels
-	Font& size(unsigned size);
+	Font& size(float size);
 	
 	/// Set number of spaces per tab
 	Font& tabSpaces(unsigned spaces);
@@ -53,13 +56,13 @@ public:
 	float scaleX() const { return mScaleX; }
 	
 	/// Get font size, in pixels
-	unsigned size() const { return mSize; }
+	float size() const { return mSize; }
 	
 	/// Get number of spaces per tab
 	unsigned tabSpaces() const { return mTabSpaces; }
 
 private:
-	unsigned mSize;
+	float mSize;
 	float mScaleX, mScaleY;
 	float mLetterSpacing;
 	float mLineSpacing;

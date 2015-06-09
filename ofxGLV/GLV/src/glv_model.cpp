@@ -4,9 +4,9 @@
 #include <stdio.h>	// sscanf, FILE
 #include <string.h>	// strchr, strpbrk
 
-#ifndef WIN32
-#define	sprintf_s(buffer, buffer_size, stringbuffer, ...) (snprintf(buffer, buffer_size, stringbuffer, __VA_ARGS__))
-#endif
+//#ifndef WIN32
+//#define	sprintf_s(buffer, buffer_size, stringbuffer, ...) (snprintf(buffer, buffer_size, stringbuffer, __VA_ARGS__))
+//#endif
 
 namespace glv{
 
@@ -15,13 +15,13 @@ bool isBlank(char c){
 }
 
 
-bool isIdentifier(const std::string& s){
-	if(isalpha(s[0]) || s[0]=='_'){
+bool isIdentifier(const std::string& v){
+	if(isalpha(v[0]) || '_'==v[0]){
 		unsigned i=1;
-		for(; i<s.size(); ++i){
-			if(!isalnum(s[i])) break;
+		for(; i<v.size(); ++i){
+			if(!(isalnum(v[i]) || '_'==v[i])) break;
 		}
-		if(s.size()==i) return true;
+		if(v.size()==i) return true;
 	}
 	return false;
 }
@@ -30,25 +30,21 @@ template<> int toString<bool>(std::string& dst, const bool& src){
 	dst = src ? "1" : "0";
 	return 1;
 }
-template<> int toString<int>(std::string& dst, const int& src){
-	char buf[20]; sprintf_s(buf, sizeof(buf), "%i", src);
-	dst = buf;
-	return 1;
+template<> int toString<int>(std::string& dst, const int& src){//
+	return toString(dst, src, "%i");
 }
 template<> int toString<float>(std::string& dst, const float& src){
-	char buf[32]; sprintf_s(buf, sizeof(buf), "%g", src); // "%.24g"
-	dst = buf;
-	return 1;
+	return toString(dst, src, "%g");
 }
 template<> int toString<double>(std::string& dst, const double& src){
-	char buf[40]; sprintf_s(buf, sizeof(buf), "%lg", src); // "%.32lg"
-	dst = buf;
-	return 1;
+	return toString(dst, src, "%lg");
 }
 template<> int toString<std::string>(std::string& dst, const std::string& src){
 	dst = src; return 1;
 }
 int toString(std::string& dst, const char * src){ return toString(dst, std::string(src)); }
+
+
 
 template<> int fromToken<bool>(bool& dst, const std::string& src){
 	char v = dst;
@@ -111,10 +107,6 @@ template<> int fromToken<std::string>(std::string * dst, int size, int stride, c
 	return i;
 }
 
-template<> int toToken<std::string>(std::string& dst, const std::string& src){
-	dst = "\"" + src + "\"";
-	return 1;
-}
 int toToken(std::string& dst, const char * src){ return toToken(dst, std::string(src)); }
 
 
@@ -193,7 +185,7 @@ Data::Data(Data::Type type, int n1, int n2, int n3, int n4)
 }
 
 Data::~Data(){
-	free();
+	clear();
 }
 
 Data& Data::operator= (const Data& v){
@@ -269,15 +261,13 @@ Data& Data::operator+=(const Data& v){
 	#undef OPALL
 }
 
-Data& Data::assign(const Data& v, int ind1, int ind2){
-
+Data& Data::assign(const Data& v, int idx){
 	if(hasData() && v.hasData()){
-		int id= indexFlat(ind1,ind2);	// starting index of destination
-		int nd= size()-id;				// number of destination elements to assign
+		int nd= size()-idx;				// number of destination elements to assign
 		int n = nd < v.size() ? nd : v.size();
 
 		#define OP(t1, t2)\
-		for(int i=0; i<n; ++i){ elem<t1>(i+id) = v.elem<t2>(i); } break
+		for(int i=0; i<n; ++i){ elem<t1>(i+idx) = v.elem<t2>(i); } break
 
 		#define OPALL(t)\
 			switch(v.type()){\
@@ -310,6 +300,83 @@ Data& Data::assign(const Data& v, int ind1, int ind2){
 	#undef OPALL
 }
 
+
+int Data::indexOf(const Data& v) const {
+	if(hasData() && v.hasData()){
+
+		#define OP(t1, t2)\
+			for(int i=0; i<size(); ++i){\
+				if(elem<t1>(i) == v.elem<t2>(0)) return i;\
+			} break
+
+		#define OPALL(t)\
+			switch(v.type()){\
+			case Data::BOOL:	OP(t, bool);\
+			case Data::INT:		OP(t, int);\
+			case Data::FLOAT:	OP(t, float);\
+			case Data::DOUBLE:	OP(t, double);\
+			default:;\
+			} break
+
+		switch(type()){
+		case Data::BOOL:	OPALL(bool);
+		case Data::INT:		OPALL(int);
+		case Data::FLOAT:	OPALL(float);
+		case Data::DOUBLE:	OPALL(double);
+		case Data::STRING:	OP(std::string, std::string);
+		default:;
+		}
+	}
+	return npos;
+	#undef OP
+	#undef OPALL
+}
+
+
+bool Data::isZero() const{
+	if(isNumerical()){
+		#define DO(TYPE, type)\
+		case TYPE:\
+		if(stride()==1){\
+			return (elem<type>(0)==type(0))\
+				&& (0==memcmp(mElems, mElems+sizeof(type), (size()-1)*sizeof(type)));\
+		}else{\
+			for(int i=0; i<size(); ++i){\
+				if(elem<type>(i) != type(0)) return false;\
+			}\
+			return true;\
+		}
+		switch(type()){
+			DO(BOOL,bool) DO(FLOAT,float) DO(DOUBLE,double) DO(INT,int)
+			default:;
+		}
+		#undef DO
+	}
+	return false;
+}
+
+
+void Data::clear(){
+PDEBUG;
+	if(release(mData)){
+		switch(type()){
+		case Data::BOOL:	delete[] data<bool>(); break;
+		case Data::INT:		delete[] data<int>(); break;
+		case Data::FLOAT:	delete[] data<float>(); break;
+		case Data::DOUBLE:	delete[] data<double>(); break;
+		case Data::STRING:	delete[] data<std::string>(); break;
+		default:;
+		}
+//		::free(mData);
+	}
+	mData=0;
+	mElems=0;
+	mStride=1;
+	shapeAll(0);
+//	mType=Data::NONE;	// LJP: leave type unchanged
+PDEBUG;
+}
+
 void Data::clone(){
 	if(hasData()){
 		int cnt = references(mData);
@@ -327,27 +394,6 @@ void Data::clone(){
 	else{
 		realloc(type());
 	}
-}
-
-void Data::free(){
-PDEBUG;
-	if(release(mData)){
-		switch(type()){
-		case Data::BOOL:	delete[] data<bool>(); break;
-		case Data::INT:		delete[] data<int>(); break;
-		case Data::FLOAT:	delete[] data<float>(); break;
-		case Data::DOUBLE:	delete[] data<double>(); break;
-		case Data::STRING:	delete[] data<std::string>(); break;
-		default:;
-		}
-//		::free(mData);
-	}
-	mData=0;
-	mElems=0;
-	mStride=1;
-	shapeAll(0);
-	mType=Data::NONE;
-PDEBUG;
 }
 
 int Data::order() const {
@@ -375,16 +421,18 @@ void Data::print() const{
 	printf("):%+d, %s %s\n", stride(), typeToString(type()).c_str(), toToken().c_str());
 }
 
-// TODO: copy over as much of the previous values as possible
+
 // if sizes==0, then keep current shape
-void Data::realloc(Data::Type t, const int * sizes, int n){
-	if(sizes){
-		free();
+int Data::realloc(Data::Type t, const int * sizes, int n){
+	Data old(*this); // REV0
+
+	if(sizes){		// new shape requested
+		clear();
 		shape(sizes, n);
 	}
-	else{
-		Data old(*this);
-		free();
+	else{			// just changing type, leave shape unchanged
+//		Data old(*this); // REV0
+		clear();
 		shape(old.mSizes, old.maxDim());
 	}	
 
@@ -397,31 +445,74 @@ void Data::realloc(Data::Type t, const int * sizes, int n){
 		case Data::FLOAT:	mData = pointer(new float[size()]); break;
 		case Data::DOUBLE:	mData = pointer(new double[size()]); break;
 		case Data::STRING:	mData = pointer(new std::string[size()]); break;
-		default:			return;
+		default:			goto end;
 		}
 		acquire(mData);
 		offset(0);
-		if(hasData() && isNumerical()) assignAll(0);
+//		if(hasData() && isNumerical()) assignAll(0); // REV0
+
+		if(hasData() && isNumerical()){
+			if(old.hasData()){
+				assign(old);	// copy over as many old elements as possible
+				if(size() > old.size()) slice(old.size()).assignAll(0);
+			}
+			else{
+				assignAll(0);
+			}
+		}
 	}
+
+	end:
+	return sizeBytes() - old.sizeBytes();
 }
 
-Data& Data::resize(const int * sizes, int n){
-	return resize(type(), sizes, n);
-}
 
-Data& Data::resize(Data::Type t, const int * sizes, int n){
+int Data::resize(Data::Type t, const int * sizes, int n){
 PDEBUG;
-	if(t!=NONE && (type()!=t || size()!=product(sizes,n))){
-		realloc(t, sizes,n);
+
+	int numBytes = 0;
+
+//	if(t!=NONE && (type()!=t || size()!=product(sizes,n))){
+//		realloc(t, sizes,n);
+//	}
+
+	// only do allocation if valid type
+	if(NONE != t){
+	
+		int newsize = product(sizes,n);
+
+		if(size() == 0 && newsize == 0){		// no sizes, just change type
+			mType = t;
+		}
+		else if((type() != t) || (size() != newsize)){	// different type or size triggers realloc
+			numBytes = realloc(t, sizes,n);
+		}
+	
+//		printf("resize: (%d %d) %d %d \t\t", t, type(), size(), product(sizes,n)); print();
+//		if(type()!=t || size()!=product(sizes,n)){
+//			printf("reallocing\n");
+//			realloc(t, sizes,n);
+//		}
+//		else if(size()==0){
+//			printf("size()==0\n");
+//			mType = t;
+//		}
+//		else{
+//			printf("else\n");
+//		}
 	}
+	else{
+		// should we free previous memory?
+	}
+
 PDEBUG;
-	return *this;
+	return numBytes;
 }
 
 void Data::setRaw(void * dt, int off, int stride, Type ty){
 	// increment reference count first to avoid problems when dt == mData
 	incrementCount(pointer(dt));
-	free();
+	clear();
 	mData  = pointer(dt);
 	mStride= stride;
 	mType  = ty;
@@ -495,6 +586,13 @@ std::string Data::typeToString(Type t){
 	}
 }
 
+
+
+/*	ModelManager TODO list: 
+		support for undo/redo
+		incremental snapshots, sequence numbers
+*/
+
 // TODO:	need to delete allocated Models
 //			need to be able to remove Data
 //void ModelManager::add(const std::string& name, Data& v){
@@ -508,6 +606,54 @@ void ModelManager::add(const std::string& name, const Model& v){
 	if(isIdentifier(name)) mConstState[name] = &v;
 }
 
+void ModelManager::clearModels(){
+	mState.clear();
+	mConstState.clear();
+}
+
+ModelManager& ModelManager::copyModels(const ModelManager& m){
+	mState = m.mState;
+	mConstState = m.mConstState;
+	return *this;
+}
+
+void ModelManager::clearSnapshots(){
+	mSnapshots.clear();
+}
+
+bool ModelManager::defaultFilePath(std::string& s) const {
+	if(!mFileName.empty()){
+		s = mFileDir + mFileName;
+		return true;
+	}
+	else if(!name().empty()){
+		s = mFileDir + name() + ".txt";
+		return true;
+	}
+	return false;
+}
+
+ModelManager& ModelManager::filePath(const std::string& name, const std::string& dir){
+	mFileName=name;
+	return fileDir(dir);
+}
+
+ModelManager& ModelManager::fileDir(const std::string& dir){
+	mFileDir = dir;
+	
+	char delim = '/';
+	if(dir.size() && dir[dir.size()-1] != delim){
+		mFileDir += delim;
+	}
+
+	return *this;
+}
+
+ModelManager& ModelManager::name(const std::string& v){
+	if(isIdentifier(v)) mName=v;
+	return *this;
+}
+
 void ModelManager::remove(const std::string& name){
 	if(mState.count(name)){
 //		Model * m = mNameVal[name];
@@ -516,8 +662,30 @@ void ModelManager::remove(const std::string& name){
 //			delete m;
 //		}
 	}
+	if(mConstState.count(name)){
+		mConstState.erase(name);
+	}
 }
 
+
+void ModelManager::printSnapshots() const {
+	Snapshots::const_iterator it = snapshots().begin();
+	while(it != snapshots().end()){
+		const Snapshot& s = it->second;
+		
+		printf("%s\n", it->first.c_str());
+		
+		Snapshot::const_iterator it2 = s.begin();
+		
+		while(it2 != s.end()){
+			printf("\t%s = ", it2->first.c_str());
+			it2->second.print();
+			++it2;
+		}
+		
+		++it;
+	}
+}
 
 
 //struct TableWriter{
@@ -549,9 +717,14 @@ void ModelManager::remove(const std::string& name){
 //};
 
 
-int ModelManager::snapshotsToFile(const std::string& path) const {
+int ModelManager::snapshotsToFile(const std::string& path_in) const {
 	std::string s;
 	if(!snapshotsToString(s)) return 0;
+
+	std::string path = path_in;
+	if(path.empty()){
+		if(!defaultFilePath(path)) return 0;
+	}
 
 	int r=0;
 	FILE * fp = fopen(path.c_str(), "w");
@@ -562,7 +735,12 @@ int ModelManager::snapshotsToFile(const std::string& path) const {
 	return r;
 }
 
-int ModelManager::snapshotsFromFile(const std::string& path, bool add){
+int ModelManager::snapshotsFromFile(const std::string& path_in, bool add){
+	std::string path = path_in;
+	if(path.empty()){
+		if(!defaultFilePath(path)) return 0;
+	}
+
 	int r=0;
 	FILE * fp = fopen(path.c_str(), "r");
 	if(fp){
@@ -583,34 +761,34 @@ int ModelManager::snapshotsFromFile(const std::string& path, bool add){
 	return r;
 }
 
-bool ModelManager::stateToToken(std::string& dst, const std::string& modelName) const {
-	#define NEWLINE "\r\n"
-	if(modelName.size())	dst = "[\"" + modelName + "\"] = {"NEWLINE;
-	else					dst = "{"NEWLINE;
-
-	std::string t;
-	{
-		NamedModels::const_iterator i = mState.begin();
-		for(; i!=mState.end(); ++i){
-			dst += "\t" + namedDataToString(i->first, i->second->getData());
-		}
-	}
-	{
-		NamedConstModels::const_iterator i = mConstState.begin();
-		for(; i!=mConstState.end(); ++i){
-			dst += "\t" + namedDataToString(i->first, i->second->getData());
-		}
-	}
-	dst += "}"NEWLINE;
-	#undef NEWLINE
-	return true;
-}
+//bool ModelManager::stateToToken(std::string& dst, const std::string& modelName) const {
+//	#define NEWLINE "\r\n"
+//	if(modelName.size())	dst = "[\"" + modelName + "\"] = {"NEWLINE;
+//	else					dst = "{"NEWLINE;
+//
+//	std::string t;
+//	{
+//		NamedModels::const_iterator i = mState.begin();
+//		for(; i!=mState.end(); ++i){
+//			dst += "\t" + namedDataToString(i->first, i->second->getData());
+//		}
+//	}
+//	{
+//		NamedConstModels::const_iterator i = mConstState.begin();
+//		for(; i!=mConstState.end(); ++i){
+//			dst += "\t" + namedDataToString(i->first, i->second->getData());
+//		}
+//	}
+//	dst += "}"NEWLINE;
+//	#undef NEWLINE
+//	return true;
+//}
 
 int ModelManager::snapshotsToString(std::string& dst) const {
 	Snapshots::const_iterator it = mSnapshots.begin();
 	if(it == mSnapshots.end()) return 0;
 
-	if(name().size())	dst = name() + " = ";
+	if(!name().empty())	dst = name() + " = ";
 	else				dst = "";
 
 	dst += "{\r\n";
@@ -620,7 +798,9 @@ int ModelManager::snapshotsToString(std::string& dst) const {
 		const Snapshot& snapshot = it->second;
 		Snapshot::const_iterator jt = snapshot.begin();
 		while(jt != snapshot.end()){
-			dst += "\t" + namedDataToString(jt->first, jt->second);
+			if(jt->second.hasData()){
+				dst += "\t" + namedDataToString(jt->first, jt->second);
+			}
 			++jt;
 		}
 		dst += "},\r\n\r\n";
@@ -639,7 +819,7 @@ struct KeyValueParser{
 	
 	int operator()(const std::string& src){
 
-		unsigned p = src.find_first_of("{");
+		size_t p = src.find_first_of("{");
 		if(std::string::npos == p) return 0;		// no table found, so return
 		
 		std::string key, val;
@@ -653,7 +833,7 @@ struct KeyValueParser{
 
 				while(isBlank(*e) || *e=='=') ++e;	// go to '='
 				
-				// find next valid token
+				// find next valid value token
 				b=e=strpbrk(e, "\"{0123456789.-+");
 
 				if(!b) b=e=&src[src.size()];	// no more valid tokens, so go to end of string
@@ -667,7 +847,7 @@ struct KeyValueParser{
 						while(*e!='}') ++e; ++e;
 					}
 					else{
-						while((isdigit(*e) || *e=='.' || *e=='-' || *e=='+')) ++e;
+						while((isdigit(*e) || *e=='.' || *e=='-' || *e=='+' || *e=='e')) ++e;
 					}
 
 					val.assign(b,e-b);
@@ -686,26 +866,26 @@ struct KeyValueParser{
 };
 
 
-int ModelManager::stateFromToken(const std::string& src){
-
-	struct It : KeyValueParser {
-		It(NamedModels& v): m(v){}
-		void onKeyValue(const std::string& key, const std::string& val){
-			if(m.count(key)){
-				//printf("%s = %s\n", key.c_str(), val.c_str());
-				m[key]->modelFromString(val);
-			}
-		}
-		NamedModels& m;
-	} it(mState);
-	
-	return it(src);
-}
+//int ModelManager::stateFromToken(const std::string& src){
+//
+//	struct It : KeyValueParser {
+//		It(NamedModels& v): m(v){}
+//		void onKeyValue(const std::string& key, const std::string& val){
+//			if(m.count(key)){
+//				//printf("%s = %s\n", key.c_str(), val.c_str());
+//				m[key]->modelFromString(val);
+//			}
+//		}
+//		NamedModels& m;
+//	} it(mState);
+//	
+//	return it(src);
+//}
 
 
 
 static bool goToNext(unsigned& p, char c, const std::string& str){
-	unsigned n = str.substr(p).find_first_of(c);
+	size_t n = str.substr(p).find_first_of(c);
 //	printf("%c: %d %d (%.5s ...)\n", c, p, n, str.substr(p).c_str());
 	if(std::string::npos != n){
 		p += n;
@@ -715,7 +895,7 @@ static bool goToNext(unsigned& p, char c, const std::string& str){
 }
 
 static bool goToNextPrintablePast(unsigned& p, char c, const std::string& str){
-	unsigned n = str.substr(p).find_first_not_of(" \t\r\n");
+	size_t n = str.substr(p).find_first_not_of(" \t\r\n");
 //	printf("%c: %d %d (%.5s ...)\n", c, p, n, str.substr(p).c_str());
 	if(std::string::npos != n){
 		p += n;
@@ -750,7 +930,7 @@ static bool goToNextPrintablePast(unsigned& p, char c, const std::string& str){
 //}
 
 int ModelManager::snapshotFromString(const std::string& src){
-//	printf("%s\n", src.c_str());
+	//printf("%s\n", src.c_str());
 	unsigned r = src.size();
 	unsigned p=0, p2=0;
 
@@ -760,29 +940,43 @@ int ModelManager::snapshotFromString(const std::string& src){
 	if(!goToNext(p2=p, '\"', src)) return r;
 
 	std::string name = src.substr(p, p2-p);
-//	printf("%s\n", name.c_str());
+	//printf("%s\n", name.c_str());
 	p = p2+1;
 
 	if(!goToNextPrintablePast(p, ']' , src)) return r;
 	if(!goToNextPrintablePast(p, '=' , src)) return r;
-//	printf("%s\n", src.substr(p).c_str());
+	//printf("%s\n", src.substr(p).c_str());
 
 	// retrieve key-value pairs
 	struct It : KeyValueParser {
 		It(Snapshot& vs, NamedModels& vm): s(vs), m(vm){}
 		void onKeyValue(const std::string& key, const std::string& val){
-//			printf("%s = %s\n", key.c_str(), val.c_str());
+			//printf("%s = %s\n", key.c_str(), val.c_str());
 
 			// Only convert value string if main state contains key 
 			// with same name.
 			NamedModels::const_iterator it = m.find(key);
 			if(it != m.end()){
-				Data& ds = s[key];
-				const Data& dm = it->second->getData();
-				
-				// Use main state as prototype
-				ds.resize(dm.type(), dm.shape(), dm.maxDim());
-				ds.fromToken(val);
+				Data& ds = s[key]; //ds.print();
+
+				// Set size of snapshot Data according to application Model				
+				if(true){
+					Data temp;
+					const Data& dm = it->second->getData(temp);
+
+					ds.resize(dm.type(), dm.shape(), dm.maxDim());
+					ds.fromToken(val);
+					//ds.print();
+				}
+
+				// Or, resize application model and snapshot data according to
+				// number of elements counted in string.
+				/*else {
+					int N = numElemsToken(val);
+					
+					ds.resize(dm.type(), N);
+					ds.fromToken(val);
+				}*/
 			}
 		}
 		Snapshot& s;
@@ -816,26 +1010,229 @@ void ModelManager::saveSnapshot(const std::string& name){
 
 	Snapshot& snapshot = mSnapshots[name];
 
-	NamedModels::iterator it = mState.begin();
-	while(it != mState.end()){
-		(snapshot[it->first] = it->second->getData()).clone();
-		++it;
-	}
-}
-
-
-void ModelManager::loadSnapshot(const std::string& name){
-	if(mSnapshots.count(name)){
-		Snapshot& snapshot = mSnapshots[name];
-
-		NamedModels::iterator it = mState.begin();
+	{	// fetch read-write model values
+		NamedModels::const_iterator it = mState.begin();
 		while(it != mState.end()){
-			if(snapshot.count(it->first)){
-				it->second->setData(snapshot[it->first]);
-			}
+			Data temp;
+			(snapshot[it->first] = it->second->getData(temp)).clone();
+			++it;
+		}
+	}
+
+	{	// fetch read-only model values
+		NamedConstModels::const_iterator it = mConstState.begin();
+		while(it != mConstState.end()){
+			Data temp;
+			(snapshot[it->first] = it->second->getData(temp)).clone();
 			++it;
 		}
 	}
 }
+
+
+bool ModelManager::loadSnapshot(const std::string& name){
+	Snapshots::const_iterator ssit = mSnapshots.find(name);
+	if(mSnapshots.end() != ssit){
+		const Snapshot& snapshot = ssit->second;
+
+		NamedModels::const_iterator it = mState.begin();
+		while(mState.end() != it){
+			Snapshot::const_iterator sit = snapshot.find(it->first);
+			if(snapshot.end() != sit){
+				it->second->setData(sit->second);
+//				printf("set state: \"%s\" = ", it->first.c_str());
+//				sit->second.print();
+//				Data temp;
+//				printf("\tstate is now "); it->second->getData(temp).print();
+			}
+			++it;
+		}
+		return true;
+	}
+	return false;
+}
+
+bool ModelManager::loadSnapshot(const Snapshot& ss1, const Snapshot& ss2, double c1, double c2){
+	Snapshot::const_iterator it1 = ss1.begin();
+	Snapshot::const_iterator it2 = ss2.begin();
+	
+	while(ss1.end() != it1 && ss2.end() != it2){
+		
+		const std::string& id1 = it1->first;
+		const std::string& id2 = it2->first;
+
+		int cmp = id1.compare(id2);
+		
+		if(0 == cmp){		// ids match, attempt interpolation
+			
+			NamedModels::const_iterator itState = mState.find(id1);
+			if(mState.end() != itState){	// found model with this id, lock and load!
+				const Data& data1 = it1->second;
+				const Data& data2 = it2->second;
+				
+				Data temp = data1;
+				temp.clone();
+				temp.mix(data1, data2, c1, c2);
+				itState->second->setData(temp);
+			}
+			
+			++it1;
+			++it2;
+		}
+		else if(cmp < 0){	// first id less than second id
+			++it1;			// let first iterator catch up with second
+		}
+		else{				// first id greater than second id
+			++it2;			// let second iterator catch up with first
+		}
+	}
+	return true;
+}
+
+
+bool ModelManager::loadSnapshot(
+	const Snapshot& ss1, const Snapshot& ss2, const Snapshot& ss3, const Snapshot& ss4,
+	double c1, double c2, double c3, double c4
+){
+	const int N = 4;
+	Snapshot::const_iterator it[N] = {ss1.begin(), ss2.begin(), ss3.begin(), ss4.begin()};
+	double cs[N] = {c1,c2,c3,c4};
+	
+	while(ss1.end() != it[0] && ss2.end() != it[1] && ss3.end() != it[2] && ss4.end() != it[3]){
+
+		/*
+		First, sort strings into A <= B <= C <= D
+		
+		if(A == B && B == C && C == D){
+			interpolate
+			 ++itA; ++itB; ++itC; ++itD;
+		}
+		else if(C != D) ++itA; ++itB; ++itC;
+		else if(B != C) ++itA; ++itB;
+		else if(A != B) ++itA;
+		*/
+
+		int sort[N]; // = 0, 1, 2, ..., N-1
+		for(int i=0;i<N;++i) sort[i]=i;
+		
+		// do a shell sort
+		int cmp13 = it[sort[0]]->first.compare(it[sort[2]]->first);
+		int cmp24 = it[sort[1]]->first.compare(it[sort[3]]->first);
+		
+		if(cmp13 > 0) std::swap(sort[0], sort[2]);
+		if(cmp24 > 0) std::swap(sort[1], sort[3]);
+
+		int cmpAB = it[sort[0]]->first.compare(it[sort[1]]->first);
+		int cmpCD = it[sort[2]]->first.compare(it[sort[3]]->first);
+
+		if(cmpAB > 0) std::swap(sort[0], sort[1]);
+		if(cmpCD > 0) std::swap(sort[2], sort[3]);
+
+		int cmpBC = it[sort[1]]->first.compare(it[sort[2]]->first);
+
+		if(cmpAB==0 && cmpBC==0 && cmpCD==0){
+			NamedModels::const_iterator itState = mState.find(it[0]->first);
+			if(mState.end() != itState){	// found model with this id, lock and load!
+				const Data * D[N];
+				for(int i=0; i<N; ++i) D[i] = &(it[i]->second);
+
+				Data temp = *D[0];
+				temp.clone();
+				temp.mix<N>(D, cs);
+				itState->second->setData(temp);
+			}
+			for(int i=0;i<N;++i) ++(it[i]);		
+		}
+		else if(cmpCD){ for(int i=0;i<N-1;++i) ++(it[i]); }
+		else if(cmpBC){ for(int i=0;i<N-2;++i) ++(it[i]); }
+		else if(cmpAB){ for(int i=0;i<N-3;++i) ++(it[i]); }
+	}
+	return true;
+}
+
+
+bool ModelManager::loadSnapshot(
+	const std::string& name1, const std::string& name2,
+	double c1, double c2
+){
+//	const std::string* names[] = {&name1, &name2}; 
+//	const double cs[] = {c1,c2};
+//	return loadSnapshot<2>(names, cs);
+	Snapshots::const_iterator it1 = mSnapshots.find(name1);
+	if(mSnapshots.end() == it1) return false;
+	Snapshots::const_iterator it2 = mSnapshots.find(name2);
+	if(mSnapshots.end() == it2) return false;
+	return loadSnapshot(it1->second, it2->second, c1,c2);
+}
+
+bool ModelManager::loadSnapshot(
+	const std::string& name1, const std::string& name2, const std::string& name3, const std::string& name4,
+	double c1, double c2, double c3, double c4
+){
+//	const std::string* names[] = {&name1, &name2, &name3, &name4}; 
+//	const double cs[] = {c1,c2,c3,c4};
+//	return loadSnapshot<4>(names, cs);
+	Snapshots::const_iterator it1 = mSnapshots.find(name1);
+	if(mSnapshots.end() == it1) return false;
+	Snapshots::const_iterator it2 = mSnapshots.find(name2);
+	if(mSnapshots.end() == it2) return false;
+	Snapshots::const_iterator it3 = mSnapshots.find(name3);
+	if(mSnapshots.end() == it3) return false;
+	Snapshots::const_iterator it4 = mSnapshots.find(name4);
+	if(mSnapshots.end() == it4) return false;
+	return loadSnapshot(it1->second, it2->second, it3->second, it4->second, c1,c2,c3,c4);
+}
+
+
+// to header...
+//template <int N>
+//bool ModelManager::loadSnapshot(const std::string ** names, const double * c){
+//	const Snapshot * snapshots[N];
+//	for(int i=0; i<N; ++i){
+//		Snapshots::const_iterator it = mSnapshots.find(names[i]);
+//		if(mSnapshots.end() == it) return false;
+//		snapshots[i] = &it->second;	
+//	}
+//	return loadSnapshot<N>(snapshots, c);
+//}
+
+//bool ModelManager::loadSnapshot(const std::string& name1, const std::string& name2, double c1, double c2){
+//	Snapshots::const_iterator it1 = mSnapshots.find(name1);
+//	if(mSnapshots.end() == it1) return false;
+//	Snapshots::const_iterator it2 = mSnapshots.find(name2);
+//	if(mSnapshots.end() == it2) return false;
+//	return loadSnapshot(it1->second, it2->second, c1,c2);
+//}
+
+
+// This runs through the current set of models and checks that snapshots have same
+// parameters. If a snapshot is missing a parameter, it is copied in from the
+// current model state.
+void ModelManager::makeClosed(){
+
+	// Run through each model in set
+	NamedModels::const_iterator itm = mState.begin();
+	for(; itm!=mState.end(); ++itm){
+	
+		const std::string& paramName = itm->first;
+		Data temp; 
+		temp = itm->second->getData(temp);
+	
+		// Run through all the snapshots checking for param name
+		Snapshots::iterator its = mSnapshots.begin();
+		for(; its!=mSnapshots.end(); ++its){
+			
+			const std::string& ssName = its->first;
+			Snapshot& ss = its->second;
+			
+			if(ss.find(paramName) == ss.end()){
+				printf("In set \"%s\": Parameter \"%s\" not found in preset \"%s\"\n",
+					name().c_str(), paramName.c_str(), ssName.c_str());
+				(ss[paramName] = temp).clone();
+			}
+		}
+	}
+}
+
 
 } // glv::

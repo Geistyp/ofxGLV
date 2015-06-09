@@ -9,7 +9,7 @@
 
 namespace glv {
 
-class HSV;
+struct HSV;
 
 /// Color represented by red, green, blue, and alpha components
 struct Color{
@@ -25,18 +25,25 @@ struct Color{
 	};
 
 
-	/// @param[in] r			red component
-	/// @param[in] g			green component
-	/// @param[in] b			blue component
-	/// @param[in] a			alpha component
+	/// @param[in] r		red component
+	/// @param[in] g		green component
+	/// @param[in] b		blue component
+	/// @param[in] a		alpha component
 	Color(float r, float g, float b, float a = 1.f);
 	
-	/// @param[in] gray			red/green/blue components
-	/// @param[in] a			alpha component
+	/// @param[in] gray		red/green/blue components
+	/// @param[in] a		alpha component
 	Color(float gray=1.f, float a=1.f);
 
+	/// @param[in] hsv		HSV color space
+	/// @param[in] a		alpha component
 	Color(const HSV& hsv, float a=1.f);
-	
+
+	/// @param[in] rgba		4-vector of RGBA components
+	template<class T>
+	Color(T * rgba): r(rgba[0]), g(rgba[1]), b(rgba[2]), a(rgba[3]){}
+
+
 	/// Set color component at index with no bounds checking
 	float& operator[](int i){ return components[i]; }
 	
@@ -52,7 +59,9 @@ struct Color{
 	Color blackAndWhite() const;					///< Returns nearest black or white color
 	Color inverse() const;							///< Returns inverted color
 	float luminance() const;						///< Get luminance value
-	Color mix(const Color& c, float amt);			///< Returns linear mix with another color (0 = none)
+	Color mix(const Color& c, float amt) const;		///< Returns linear mix with another color (0 = none)
+	Color mixRGB(const Color& c, float amt) const;
+
 
 	void clamp();									///< Clamp RGB components into [0,1]
 	void invert();									///< Invert colors
@@ -92,6 +101,7 @@ struct HSV{
 		float components[3]; ///< HSV component vector
 	};
 
+
 	/// @param[in] h	hue
 	/// @param[in] s	saturation
 	/// @param[in] v	value
@@ -100,20 +110,22 @@ struct HSV{
 	/// @param[in] c	RGB color to convert from
 	HSV(const Color& c){ *this = c; }
 
-	/// @param[in] hsv		3-vector of hsv components
+	/// @param[in] hsv	3-vector of HSV components
 	template<class T>
 	HSV(T * hsv): h(hsv[0]), s(hsv[1]), v(hsv[2]){}
+
 
 	/// Set from RGB color
 	HSV& operator=(const Color& c){ c.getHSV(h, s, v); return *this; }
 	
 	/// Rotate hue in interval [0, 1)
-	HSV& rotateHue(float v){ h += v; wrapHue(); return *this; }
+	HSV& rotateHue(float v){ h += v; return wrapHue(); }
 	
 	/// Wrap hue value into valid interval [0, 1)
-	void wrapHue(){
+	HSV& wrapHue(){
 		if(h>1){ h -= int(h); }
 		else if(h<0){ h -= int(h)-1; }
+		return *this;
 	}
 };
 
@@ -149,7 +161,11 @@ inline Color& Color::operator*=(float v){ set(r*v, g*v, b*v, a*v); return *this;
 inline Color Color::blackAndWhite() const { return Color(luminance()>0.5f?1.f:0.f); }
 inline Color Color::inverse() const { return Color(1.f-r, 1.f-g, 1.f-b, a); }
 inline float Color::luminance() const { return r*0.299f+g*0.587f+b*0.114f; }
-inline Color Color::mix(const Color& c, float f){ return (c-*this)*f + *this; }
+inline Color Color::mix(const Color& c, float f) const { return (c-*this)*f + *this; }
+
+inline Color Color::mixRGB(const Color& c, float f) const {
+	return Color((c.r-r)*f+r, (c.g-g)*f+g, (c.b-b)*f+b, a);
+}
 
 inline void	Color::clamp(){
 	r<0.f ? r=0.f : (r>1.f ? r=1.f : 0);

@@ -5,7 +5,7 @@
 	See COPYRIGHT file for authors and license information */
 
 #include "glv_core.h"
-
+#include "glv_sliders.h"
 
 namespace glv{
 
@@ -27,6 +27,19 @@ struct Group : public View{
 
 
 
+/// Horizontal or vertical line
+class Divider : public Group{
+public:
+	Divider(float thickness=6, float strokeWidth=1, bool vertical=false);
+
+	virtual void onDraw(GLV& g);
+	virtual const char * className() const { return "Divider"; }
+
+protected:
+	float mStrokeWidth;
+	bool mIsVertical;
+};
+
 
 
 /// View placer
@@ -47,6 +60,8 @@ public:
 
 	/// Set the absolute increment amounts
 	Placer& abs(space_t vx, space_t vy);
+	Placer& absX(space_t v);
+	Placer& absY(space_t v);
 	
 	/// Set view alignment location
 	Placer& align(space_t vx, space_t vy);
@@ -88,29 +103,64 @@ protected:
 
 /// A Group that automatically fits itself to child Views
 struct Box : public Group{
+
+	/// @param[in] dir		flow direction of successively added views
+	/// @param[in] align	alignment of views in each "cell"
+	/// @param[in] pad		padding, in pixels, between each view
 	Box(Direction dir=Direction::E, Place::t align=Place::TL, space_t pad=4)
 	:	p(*this, dir, align, 0,0, pad){}
 
-	Box(View& v1, View& v2, Direction dir=Direction::E, Place::t align=Place::TL, space_t pad=4)
+	Box(
+		View& v1, View& v2,
+		Direction dir=Direction::E, Place::t align=Place::TL, space_t pad=4
+	)
 	:	p(*this, dir, align, 0,0, pad){
 		p << v1 << v2;
 		fit();
 	}
 
-	Box(View& v1, View& v2, View& v3, Direction dir=Direction::E, Place::t align=Place::TL, space_t pad=4)
+	Box(
+		View& v1, View& v2, View& v3,
+		Direction dir=Direction::E, Place::t align=Place::TL, space_t pad=4
+	)
 	:	p(*this, dir, align, 0,0, pad){
 		p << v1 << v2 << v3;
 		fit();
 	}
 
-	Box(View& v1, View& v2, View& v3, View& v4, Direction dir=Direction::E, Place::t align=Place::TL, space_t pad=4)
+	Box(
+		View& v1, View& v2, View& v3, View& v4,
+		Direction dir=Direction::E, Place::t align=Place::TL, space_t pad=4
+	)
 	:	p(*this, dir, align, 0,0, pad){
 		p << v1 << v2 << v3 << v4;
 		fit();
 	}
-	
+
+	Box(
+		View& v1, View& v2, View& v3, View& v4, View& v5,
+		Direction dir=Direction::E, Place::t align=Place::TL, space_t pad=4
+	)
+	:	p(*this, dir, align, 0,0, pad){
+		p << v1 << v2 << v3 << v4 << v5;
+		fit();
+	}
+
+	Box(
+		View& v1, View& v2, View& v3, View& v4, View& v5, View& v6,
+		Direction dir=Direction::E, Place::t align=Place::TL, space_t pad=4
+	)
+	:	p(*this, dir, align, 0,0, pad){
+		p << v1 << v2 << v3 << v4 << v5 << v6;
+		fit();
+	}
+
 	Box& operator<< (View* v){ p<<v; fit(); return *this; }
 	Box& operator<< (View& v){ p<<v; fit(); return *this; }
+
+	Box& padding (space_t v){ return paddingX(v).paddingY(v); }
+	Box& paddingX(space_t v){ p.absX(v); return *this; }
+	Box& paddingY(space_t v){ p.absY(v); return *this; }
 
 	virtual const char * className() const { return "Box"; }
 private:
@@ -191,7 +241,7 @@ public:
 	/// @param[in] padX			Padding in x-direction between cells
 	/// @param[in] padY			Padding in y-direction between cells
 	/// @param[in] r			Geometry
-	Table(const char * arrangement, space_t padX=4, space_t padY=4, const Rect& r=Rect(0));
+	Table(const char * arrangement="<", space_t padX=3, space_t padY=3, const Rect& r=Rect(0));
 
 	/// Arrange child Views according to cell arrangement specification.
 	
@@ -223,14 +273,29 @@ public:
 	/// The alignment code will set the View's anchor factors.
 	Table& arrangement(const char * v);
 
+	/// Set padding amounts, in pixels, along x and y
+	Table& padding (space_t v){ mPad1=mPad2=v; return arrange(); }
+
+	/// Set padding, in pixels, along x
+	Table& paddingX(space_t v){ mPad1=v; return arrange(); }
+
+	/// Set padding, in pixels, along y
+	Table& paddingY(space_t v){ mPad2=v; return arrange(); }
+
+
 	/// Get arrangement string
 	const std::string& arrangement() const { return mAlign; }
 
-	space_t padX() const { return mPad1; }
-	space_t padY() const { return mPad2; }
+	/// Get padding, in pixels, along x
+	space_t paddingX() const { return mPad1; }
+	
+	/// Get padding, in pixels, along y
+	space_t paddingY() const { return mPad2; }
+
 
 	virtual const char * className() const { return "Table"; }
-	virtual void onDraw(GLV& g);
+	virtual void onDraw(GLV& g);	
+	//virtual void onResize(space_t dx, space_t dy){ arrange(); }
 
 protected:
 
@@ -246,6 +311,7 @@ protected:
 	std::string mAlign;
 	space_t mPad1, mPad2;
 	std::vector<space_t> mColWs, mRowHs;
+	int mRepeatRow;
 	
 	bool isAlignCode(char c){
 		return	c=='<' || c=='>' || c=='^' || c=='v' || c=='x' || 
@@ -259,7 +325,62 @@ protected:
 		for(int i=begin; i<end; ++i) r += src[i];
 		return r;
 	}
+	
+	void getCellDim(int idx, space_t& pl, space_t& pt, space_t& pr, space_t& pb);
 };
+
+
+
+/// Scrollable view of a single child view
+class Scroll : public View{
+public:
+
+	/// Scrollbar mode flags; default is HORIZONTAL | VERTICAL
+	enum Mode{
+		HORIZONTAL	= 1<<0,		/**< Show horizontal scrollbar */
+		VERTICAL	= 1<<1,		/**< Show vertical scrollbar */
+		ALWAYS		= 1<<2,		/**< Always show activated scrollbars */
+	};
+
+	/// @param[in] r				geometry
+	/// @param[in] scrollBarWidth	scroll bar width
+	/// @param[in] padX				padding along x direction
+	/// @param[in] padY				padding along y direction
+	Scroll(const Rect& r=Rect(200), float scrollBarWidth=12, float padX=0, float padY=0);
+
+	Mode mode() const { return mMode; }
+	float paddingX() const { return mPadding[0]; }
+	float paddingY() const { return mPadding[1]; }
+
+	Scroll& mode(Mode v){ mMode=v; return *this; }
+
+	Scroll& padding(float v){ return paddingX(v).paddingY(v); }
+	Scroll& paddingX(float v){ mPadding[0]=v; return *this; }
+	Scroll& paddingY(float v){ mPadding[1]=v; return *this; }
+
+	Scroll& pageX(float v){ mSliderX.jumpBy(v); return *this; }
+	Scroll& pageY(float v){	mSliderY.jumpBy(v); return *this; }
+
+	Scroll& scrollTopTo(float v){
+		mSliderY.center(-v - mSliderY.range()/2);
+		return *this;
+	}
+
+	virtual const char * className() const { return "Scroll"; }
+	virtual void onDraw(GLV& g);
+	virtual bool onEvent(Event::t e, GLV& g);
+
+protected:
+	float mPadding[2];
+	SliderRange mSliderX, mSliderY; // intervals dimensions of child view
+									// bar intervals dimensions of child subregion
+	Slider2D mSliderXY;
+	Mode mMode;
+};
+
+inline Scroll::Mode operator| (const Scroll::Mode& a, const Scroll::Mode& b){
+	return static_cast<Scroll::Mode>(+a|+b);
+}
 
 
 

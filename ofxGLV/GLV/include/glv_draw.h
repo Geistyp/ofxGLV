@@ -3,7 +3,7 @@
 
 /*	Graphics Library of Views (GLV) - GUI Building Toolkit
 	See COPYRIGHT file for authors and license information */
-
+#define _USE_MATH_DEFINES
 #include <math.h>
 #include <stdio.h>
 #include "glv_conf.h"
@@ -13,8 +13,17 @@
 
 namespace glv {
 
-/// Icon function type
-typedef void (* iconFunc)(float l, float t, float r, float b);
+#ifdef GLV_OPENGL_ES1
+	#define GLV_INDEX GL_UNSIGNED_SHORT
+	typedef unsigned short index_t;
+#else
+	#define GLV_INDEX GL_UNSIGNED_INT
+	typedef unsigned int index_t;
+#endif
+
+  
+/// Symbol function type
+typedef void (* SymbolFunc)(float l, float t, float r, float b);
 
 /// Two-dimensional point
 struct Point2{
@@ -49,7 +58,7 @@ public:
 	const Buffer<Color>& colors() const { return mColors; }
 	
 	/// Get index buffer
-	const Buffer<unsigned>& indices() const { return mIndices; }
+	const Buffer<index_t>& indices() const { return mIndices; }
 	
 	/// Get 2D vertex buffer
 	const Buffer<Point2>& vertices2() const { return mVertices2; }
@@ -62,6 +71,10 @@ public:
 		mVertices2.reset(); mVertices3.reset();
 		mColors.reset(); mIndices.reset();
 	}
+
+	/// Append color
+	void addColor(float r, float g, float b, float a=1){
+		addColor(Color(r,g,b,a)); }
 
 	/// Append color
 	void addColor(const Color& c){
@@ -80,41 +93,41 @@ public:
 		addColor(c1,c2,c3); addColor(c4); }
 
 	/// Append index
-	void addIndex(unsigned i){
+	void addIndex(index_t i){
 		indices().append(i); }
-
+  
 	/// Append indices
-	void addIndex(unsigned i1, unsigned i2){
+	void addIndex(index_t i1, index_t i2){
 		addIndex(i1); addIndex(i2); }
-
+  
 	/// Append indices
-	void addIndex(unsigned i1, unsigned i2, unsigned i3){
+	void addIndex(index_t i1, index_t i2, index_t i3){
 		addIndex(i1,i2); addIndex(i3); }
-
+  
 	/// Append indices
-	void addIndex(unsigned i1, unsigned i2, unsigned i3, unsigned i4){
+	void addIndex(index_t i1, index_t i2, index_t i3, index_t i4){
 		addIndex(i1,i2,i3); addIndex(i4); }
 
 	/// Append 2D vertex
-	void addVertex(double x, double y){ addVertex2(x,y); }
+	void addVertex(float x, float y){ addVertex2(x,y); }
 
 	/// Append 3D vertex
-	void addVertex(double x, double y, double z){ addVertex3(x,y,z); }
+	void addVertex(float x, float y, float z){ addVertex3(x,y,z); }
 
 	/// Append 2D vertex
-	void addVertex2(double x, double y){
+	void addVertex2(float x, float y){
 		vertices2().append(Point2(x,y)); }
 
 	/// Append 2D vertices
-	void addVertex2(double x1, double y1, double x2, double y2){
+	void addVertex2(float x1, float y1, float x2, float y2){
 		addVertex2(x1,y1); addVertex2(x2,y2); }
 
 	/// Append 2D vertices
-	void addVertex2(double x1, double y1, double x2, double y2, double x3, double y3){
+	void addVertex2(float x1, float y1, float x2, float y2, float x3, float y3){
 		addVertex2(x1,y1,x2,y2); addVertex2(x3,y3); }
 
 	/// Append 2D vertices
-	void addVertex2(double x1, double y1, double x2, double y2, double x3, double y3, double x4, double y4){
+	void addVertex2(float x1, float y1, float x2, float y2, float x3, float y3, float x4, float y4){
 		addVertex2(x1,y1,x2,y2,x3,y3); addVertex2(x4,y4); }
 
 	/// Append 2D vertex
@@ -122,7 +135,7 @@ public:
 	void addVertex2(const VEC2& v){ addVertex2(v[0], v[1]); }
 
 	/// Append 3D vertex
-	void addVertex3(double x, double y, double z){ vertices3().append(Point3(x,y,z)); }
+	void addVertex3(float x, float y, float z){ vertices3().append(Point3(x,y,z)); }
 
 	/// Append 3D vertex
 	template <class VEC3>
@@ -132,7 +145,7 @@ public:
 	Buffer<Color>& colors(){ return mColors; }
 
 	/// Get mutable index buffer
-	Buffer<unsigned>& indices(){ return mIndices; }
+	Buffer<index_t>& indices(){ return mIndices; }
 
 	/// Get mutable 2D vertex buffer
 	Buffer<Point2>& vertices2(){ return mVertices2; }
@@ -144,7 +157,7 @@ protected:
 	Buffer<Point2> mVertices2;
 	Buffer<Point3> mVertices3;
 	Buffer<Color> mColors;
-	Buffer<unsigned> mIndices;
+	Buffer<index_t> mIndices;
 };
 
 
@@ -168,41 +181,58 @@ enum{
 	Triangles     = GL_TRIANGLES,
 	TriangleStrip = GL_TRIANGLE_STRIP,
 	TriangleFan   = GL_TRIANGLE_FAN,
-#ifdef GLV_USE_OPENGL_ES
-	Quads         = GL_POINTS,
-	QuadStrip     = GL_TRIANGLE_STRIP,
-#else
-	Quads         = GL_QUADS,
-	QuadStrip     = GL_QUAD_STRIP,
-#endif
 };
 
+  
 /// Capabilities (for disable() and enable())
 enum{
 	Blend			= GL_BLEND,
 	DepthTest		= GL_DEPTH_TEST,
 	Fog				= GL_FOG,
+	Lighting		= GL_LIGHTING,
 	LineSmooth		= GL_LINE_SMOOTH,
-	LineStipple		= GL_LINE_STIPPLE,
-	PolygonSmooth	= GL_POLYGON_SMOOTH,
 	PointSmooth		= GL_POINT_SMOOTH,
 	ScissorTest		= GL_SCISSOR_TEST,
 	Texture2D		= GL_TEXTURE_2D
 };
 
-/// Attribute masks
-enum{
-	ColorBufferBit	= GL_COLOR_BUFFER_BIT,
-	DepthBufferBit	= GL_DEPTH_BUFFER_BIT,
-	EnableBit		= GL_ENABLE_BIT,
-	ViewPortBit		= GL_VIEWPORT_BIT
-};
-
+  
 /// Transform matrices
 enum{
 	ModelView		= GL_MODELVIEW,
 	Projection		= GL_PROJECTION,
 	Texture			= GL_TEXTURE
+};
+
+
+/// Singleton user-defined cammands called after corresponding GL calls
+class UserCommands {
+public:
+	virtual ~UserCommands(){}
+
+	virtual void enable(int cap){}
+	virtual void disable(int cap){}
+
+	virtual void blendFunc(int sfactor, int dfactor){}
+	virtual void lineWidth(float v){}
+	virtual void pointSize(float v){}
+	
+	static void set(UserCommands * v){ get() = v; }
+	
+	static void setDefault(){ get() = none(); }
+	
+	static UserCommands * none(){
+		static UserCommands * v = new UserCommands;
+		return v;
+	}
+
+	static UserCommands *& get(){
+		static UserCommands * v = none();
+		return v;
+	}
+
+protected:
+	UserCommands(){}
 };
 
 
@@ -217,13 +247,15 @@ void color(float gray, float a=1);					///< Set current draw color
 void color(float r, float g, float b, float a=1);		///< Set current draw color
 void color(const Color& c);							///< Set current draw color
 void color(const Color& c, float a);				///< Set current draw color, but override alpha component
+void enter2D(float w, float h);						///< Enter 2D drawing mode
 void fog(float end, float start, const Color& c=Color(0));	///< Set linear fog parameters
 void genEllipse(Point2 * pts, int num, int stride, double ang01, double loops, float l, float t, float r, float b);
 void identity();									///< Load identity transform matrix
 void lineStipple(char factor, short pattern);		///< Specify line stipple pattern
+void lineStippling(bool v);							///< Enable/disable line stippling
 void lineWidth(float val);							///< Set width of lines
 void matrixMode(int mode);							///< Set current transform matrix
-void ortho(float l, float r, float b, float t);		///< Set orthographic projection mode
+void ortho(float l, float r, float b, float t, float n = -1.0f, float f = 1.0f);		///< Set orthographic projection mode
 void paint(int prim, Point2 * verts, int numVerts);	///< Draw array of 2D vertices
 void paint(int prim, const GraphicsData& gb);		///< Render graphics data
 void paint(int prim, Point2 * verts, Color * cols, int numVerts);
@@ -237,22 +269,17 @@ void pointSize(float val);							///< Set size of points
 void pointAtten(float c2=0, float c1=0, float c0=1); ///< Set distance attenuation of points. The scaling formula is clamp(size * sqrt(1/(c0 + c1*d + c2*d^2)))
 void pop();											///< Pop current transform matrix stack
 void pop(int matrixMode);							///< Pop a transform matrix stack also setting as current matrix
-void pop2D();										///< Pop 2-D pixel space
-void pop3D();										///< Pop 3-D signed normalized cartesian space
-void popAttrib();									///< Pop last pushed attributes from stack
 int printError(const char * pre="", bool verbose=true, FILE * out=stdout); ///< Print rendering errors to file
 void push();										///< Push current transform matrix stack 
 void push(int matrixMode);							///< Push a transform matrix stack also setting as current matrix
-void push2D(float w, float h);						///< Push 2-D pixel space
-void push3D(float w, float h, float near=0.1, float far=100, float fovy=45);	///< Push 3-D signed normalized cartesian space
-void pushAttrib(int attribs);						///< Push current attributes onto stack
 void rotate(float degx, float degy, float degz);
 void rotateX(float deg);
 void rotateY(float deg);
 void rotateZ(float deg);
 void scale(float v);								///< Scale all dimensions by amount
 void scale(float x, float y, float z=1.f);
-void scissor(float x, float y, float w, float h);
+void scissor(int x, int y, int w, int h);			///< Set scissor region using window coordinate system
+void scissorGUI(int l, int t, int w, int h, int windowH);	///< Set scissor region using GUI coordinate system
 void stroke(float w);								///< Sets width of lines and points
 void texCoord(float x, float y);
 void translate(float x, float y, float z=0.f);
@@ -263,34 +290,94 @@ void viewport(float x, float y, float w, float h);
 
 
 
-// icons
+// symbols
 void check		(float l, float t, float r, float b);	///< Check mark
 template<int N>
 void circle		(float l, float t, float r, float b);	///< Circle with N edges
+template<int X, int Y>
+void crosshatch	(float l, float t, float r, float b);	///< Parallel lines across x and y axes
 template<int N>
 void disc		(float l, float t, float r, float b);	///< Disc with N edges
+void fileLoad	(float l, float t, float r, float b);	///< Load file indicator
+void fileSave	(float l, float t, float r, float b);	///< Save file indicator
 void frame		(float l, float t, float r, float b);	///< Rectangular frame
-void minus		(float l, float t, float r, float b);	///< Minus
+template<int LT, int LB, int RB, int RT>
+void frameTrunc	(float l, float t, float r, float b);	///< Rectangular frame truncated at corners
+void minus		(float l, float t, float r, float b);	///< Minus sign
 template <int N, int M, int A>
 void polygon	(float l, float t, float r, float b);	///< Regular polygon with N edges, M loops, and angle A
-void plus		(float l, float t, float r, float b);	///< Plus
+template<int N, int A>
+void polygonCut	(float l, float t, float r, float b);	///< Regular polygon with N edges at angle A cut through center
+void plus		(float l, float t, float r, float b);	///< Plus sign
+void magnifier	(float l, float t, float r, float b);	///< Magnifying glass
+void question	(float l, float t, float r, float b);	///< Question mark
 void rectangle	(float l, float t, float r, float b);	///< Solid rectangle
-template<int N, int M, int L>
-void rose		(float l, float t, float r, float b);	///< Rose curve with N edges and M+L loops
+template<int LT, int LB, int RB, int RT>
+void rectTrunc	(float l, float t, float r, float b);	///< Rectangle truncated at corners
+template<int N, int M, int L, int A>
+void rose		(float l, float t, float r, float b);	///< Rose curve with N edges and M+L loops at angle A
 template<int N, int A>
 void spokes		(float l, float t, float r, float b);	///< N spokes rotated by angle A
 void triangleR	(float l, float t, float r, float b);	///< Right pointing triangle
 void triangleL	(float l, float t, float r, float b);	///< Left pointing triangle
 void triangleU	(float l, float t, float r, float b);	///< Upward pointing triangle
 void triangleD	(float l, float t, float r, float b);	///< Downward pointing triangle
+void viewChild	(float l, float t, float r, float b);	///< A parent and child view symbol
+void viewSibling(float l, float t, float r, float b);	///< Two sibling views symbol
 void x			(float l, float t, float r, float b);	///< X mark
+
+/// Combination of two symbols; can be used recursively
+template<
+	void (*Symbol1)(float,float,float,float),
+	void (*Symbol2)(float,float,float,float)
+>
+void combo(float l, float t, float r, float b);
+
+/// Combination of three symbols
+template<
+	void (*Symbol1)(float,float,float,float),
+	void (*Symbol2)(float,float,float,float),
+	void (*Symbol3)(float,float,float,float)
+>
+void combo(float l, float t, float r, float b){
+	combo<combo<Symbol1, Symbol2>, Symbol3>(l,t,r,b);
+}
+
+/// Combination of four symbols
+template<
+	void (*Symbol1)(float,float,float,float),
+	void (*Symbol2)(float,float,float,float),
+	void (*Symbol3)(float,float,float,float),
+	void (*Symbol4)(float,float,float,float)
+>
+void combo(float l, float t, float r, float b){
+	combo<combo<Symbol1, Symbol2, Symbol3>, Symbol4>(l,t,r,b);
+}
+
+/// Scale and translate symbol from top-left corner
+template<void (*Symbol)(float,float,float,float), int Sx, int Sy, int Tx, int Ty>
+void scaleTranslate(float l, float t, float r, float b){
+	float w = r-l, h = b-t;
+	float tx = Tx/120. * w;
+	float ty = Ty/120. * h;
+	l += tx;
+	t += ty;
+	r = l + Sx/120. * w;
+	b = t + Sy/120. * h;
+	Symbol(l,t,r,b);
+}
+
+
 
 
 /// Parallel horizontal and vertical lines
 void grid(GraphicsData& g, float l, float t, float w, float h, float divx, float divy, bool incEnds=true);
 
-/// Converts a float to its pixel value.
+/// Returns closest pixel coordinate
 inline int pix(float v);
+
+/// Returns center of closest pixel coordinate
+inline float pixc(float v);
 
 /// Draw vertices using primitive
 void shape(int prim, float x0, float y0, float x1, float y1);
@@ -302,7 +389,7 @@ void shape(int prim, float x0, float y0, float x1, float y1, float x2, float y2)
 void shape(int prim, float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3);
 
 /// Draws a text string, including new lines and tabs.
-void text(const char * s, float l=0, float t=0, unsigned fontSize=8, float lineSpacing=1, unsigned tabSpaces=4);
+void text(const char * s, float l=0, float t=0, unsigned fontSize=8, float lineSpacing=1.5, unsigned tabSpaces=4);
 
 
 
@@ -319,7 +406,9 @@ struct Disable{
 	const Disable& operator()(int cap1, int cap2, int cap3) const { return *this << cap1<<cap2<<cap3; }
 	
 	/// Disable a capability
-	const Disable& operator<< (int cap) const { glDisable(cap); return *this; }
+	const Disable& operator<< (int cap) const {
+		glDisable(cap); UserCommands::get()->disable(cap); return *this;
+	}
 };
 
 /// Global Disable functor
@@ -340,7 +429,9 @@ struct Enable{
 	const Enable& operator()(int cap1, int cap2, int cap3) const { return *this << cap1<<cap2<<cap3; }
 	
 	/// Enable a capability
-	const Enable& operator<< (int cap) const { glEnable(cap); return *this; }
+	const Enable& operator<< (int cap) const {
+		glEnable(cap); UserCommands::get()->enable(cap); return *this;
+	}
 };
 
 /// Global Enable functor
@@ -352,28 +443,187 @@ static Enable enable;
 
 // Implementation ______________________________________________________________
 
-inline void check(float l, float t, float r, float b){ shape(LineStrip, l,0.5*(t+b), l+(r-l)*0.3,b, r,t); }
+template<int LT, int LB, int RB, int RT>
+inline void baseTrunc(float l, float t, float r, float b, int prim){
+	const int NC = (LT?1:0) + (LB?1:0) + (RB?1:0) + (RT?1:0);
+	Point2 pts[4+NC];
+
+	int i=-1;
+	if(LT){	pts[++i](l+LT, t);
+			pts[++i](l  , t+LT);
+	} else	pts[++i](l,t);
+
+	if(LB){	pts[++i](l  , b-LB);
+			pts[++i](l+LB, b);
+	} else	pts[++i](l,b);
+
+	if(RB){	pts[++i](r-RB, b);
+			pts[++i](r  , b-RB);
+	} else	pts[++i](r,b);
+
+	if(RT){	pts[++i](r  , t+RT);
+			pts[++i](r-RT, t);
+	} else	pts[++i](r,t);
+
+	paint(prim, pts, GLV_ARRAY_SIZE(pts));
+}
+
+inline void check(float l, float t, float r, float b){ shape(LineStrip, l,0.5f*(t+b), l+(r-l)*0.3f,b, r,t); }
 
 template<int N>
 inline void circle(float l, float t, float r, float b){ return polygon<N,1,1>(l,t,r,b); }
+
+template <void (*Symbol1)(float,float,float,float), void (*Symbol2)(float,float,float,float)>
+void combo(float l, float t, float r, float b){ Symbol1(l,t,r,b); Symbol2(l,t,r,b); }
+
+template<int X, int Y>
+void crosshatch(float l, float t, float r, float b){
+	Point2 pts[(X+Y)*2];
+	int j=-1;
+	for(int i=0; i<X; ++i){
+		float dx= (r-l)/(X+1);
+		float x = l+dx*(i+1);
+		pts[++j](x, t);
+		pts[++j](x, b);
+	}
+
+	for(int i=0; i<Y; ++i){
+		float dy= (b-t)/(Y+1);
+		float y = t+dy*(i+1);
+		pts[++j](l, y);
+		pts[++j](r, y);
+	}
+
+	paint(Lines, pts, GLV_ARRAY_SIZE(pts));
+}
 
 template <int N>
 void disc(float l, float t, float r, float b){
 	Point2 pts[N+2];
 	genEllipse(pts+1,N,1, 0, 1, l,t,r,b);
-	pts[0](0.5*(l+r), 0.5*(t+b));
+	pts[0](0.5f*(l+r), 0.5f*(t+b));
 	pts[N+1] = pts[1];
 	paint(TriangleFan, pts, GLV_ARRAY_SIZE(pts));
 }
 
+inline void fileLoad(float l, float t, float r, float b){
+	float w=r-l, h=b-t;
+	float pts[] = {
+		l+w*0.2f, t+h*0.5f,
+		l+w*0.6f, t+h*0.5f,
+		l+w*0.6f, t+h*0.1f,
+		l+w*0.5f, t+h*0.0f,
+		l+w*0.0f, t+h*0.0f,
+		l+w*0.0f, t+h*1.0f,
+		l+w*0.6f, t+h*1.0f,
+		l+w*0.6f, t+h*0.5f,
+		l+w*1.0f, t+h*0.5f,
+		l+w*0.7f, t+h*0.7f
+	};
+	paint(LineStrip, (Point2*)pts, GLV_ARRAY_SIZE(pts)/2);
+}
+
+inline void fileSave(float l, float t, float r, float b){
+	float w=r-l, h=b-t;
+	float pts[] = {
+		l+w*0.5f, t+h*0.7f,
+		l+w*0.2f, t+h*0.5f,
+		l+w*0.6f, t+h*0.5f,
+		l+w*0.6f, t+h*0.1f,
+		l+w*0.5f, t+h*0.0f,
+		l+w*0.0f, t+h*0.0f,
+		l+w*0.0f, t+h*1.0f,
+		l+w*0.6f, t+h*1.0f,
+		l+w*0.6f, t+h*0.5f,
+		l+w*1.0f, t+h*0.5f
+	};
+	paint(LineStrip, (Point2*)pts, GLV_ARRAY_SIZE(pts)/2);
+}
+
 inline void frame(float l, float t, float r, float b){ shape(LineLoop, l, t, l, b, r, b, r, t); }
-inline void minus(float l, float t, float r, float b){ float my=0.5*(t+b); shape(Lines, l,my, r,my); }
+
+template<int LT, int LB, int RB, int RT>
+void frameTrunc(float l, float t, float r, float b){
+	baseTrunc<LT,LB,RB,RT>(l,t,r,b, LineLoop);
+}
+
+inline void magnifier(float l, float t, float r, float b){
+	float w=r-l, h=b-t;
+	float pts[] = {
+		l+w*1.00f, t+h*1.00f,
+		l+w*0.55f, t+h*0.55f,
+		l+w*0.66f, t+h*0.33f,
+		l+w*0.55f, t+h*0.11f,
+		l+w*0.33f, t+h*0.00f,
+		l+w*0.11f, t+h*0.11f,
+		l+w*0.00f, t+h*0.33f,
+		l+w*0.11f, t+h*0.55f,
+		l+w*0.33f, t+h*0.66f,
+		l+w*0.55f, t+h*0.55f
+	};
+	paint(LineStrip, (Point2*)pts, GLV_ARRAY_SIZE(pts)/2);
+}
+
+inline void minus(float l, float t, float r, float b){ float my=0.5f*(t+b); shape(Lines, l,my, r,my); }
+
+inline void plus(float l, float t, float r, float b){
+	float mx = 0.5f*(l+r);
+	float my = 0.5f*(t+b);
+	shape(Lines, mx,t, mx,b, l,my, r,my);
+}
 
 template <int N, int M, int A>
 void polygon(float l, float t, float r, float b){
 	Point2 pts[N];
 	genEllipse(pts,N,1, A/360.,M, l,t,r,b);
 	paint(LineLoop, pts, GLV_ARRAY_SIZE(pts));
+}
+
+template<int N, int A>
+void polygonCut(float l, float t, float r, float b){
+	Point2 pts[N+2];
+	genEllipse(pts,N,1, A/360., 1, l,t,r,b);
+	pts[N]  = pts[0];
+	pts[N+1]= pts[N/2];
+	paint(LineStrip, pts, GLV_ARRAY_SIZE(pts));
+}
+
+inline void question(float l, float t, float r, float b){
+	float w=r-l, h=b-t;
+	float pts[] = {
+		l+w*0.1f, t+h*0.2f,
+		l+w*0.3f, t+h*0.0f,
+		l+w*0.7f, t+h*0.0f,
+		l+w*0.9f, t+h*0.2f,
+//		l+w*0.8f, t+h*0.5f,
+		l+w*0.9f, t+h*0.4f,
+		l+w*0.5f, t+h*0.6f,
+		l+w*0.5f, t+h*0.8f,
+		l+w*0.6f, t+h*0.9f,
+		l+w*0.5f, t+h*1.0f,
+		l+w*0.4f, t+h*0.9f,
+		l+w*0.5f, t+h*0.8f		
+	};
+	paint(LineStrip, (Point2*)pts, GLV_ARRAY_SIZE(pts)/2);	
+}
+
+inline void rectangle(float l, float t, float r, float b){ shape(TriangleStrip, l,t, l,b, r,t, r,b); }
+
+template<int LT, int LB, int RB, int RT>
+void rectTrunc(float l, float t, float r, float b){
+	baseTrunc<LT,LB,RB,RT>(l,t,r,b, TriangleFan);
+}
+
+template<int N, int M, int L, int A>
+void rose(float l, float t, float r, float b){
+	Point2 pts1[N], pts2[N];
+	genEllipse(pts1,N,1, A/360., M, l,t,r,b);
+	genEllipse(pts2,N,1, A/360., L, l,t,r,b);
+	for(int i=0; i<N; ++i){
+		pts1[i].x = (pts1[i].x+pts2[i].x)*0.5;
+		pts1[i].y = (pts1[i].y+pts2[i].y)*0.5;
+	}
+	paint(LineLoop, pts1,N);
 }
 
 template<int N, int A>
@@ -386,6 +636,47 @@ void spokes(float l, float t, float r, float b){
 	for(int i=0; i<N2; i+=2) pts[i](cx,cy);
 	paint(Lines, pts, GLV_ARRAY_SIZE(pts));
 }
+
+inline void stroke(float w){ lineWidth(w); pointSize(w); }
+inline void triangleD(float l, float t, float r, float b){ shape(Triangles, 0.5f*(l+r),b, r,t, l,t); }
+inline void triangleL(float l, float t, float r, float b){ shape(Triangles, l,0.5f*(t+b), r,b, r,t); }
+inline void triangleR(float l, float t, float r, float b){ shape(Triangles, r,0.5f*(t+b), l,t, l,b); }
+inline void triangleU(float l, float t, float r, float b){ shape(Triangles, 0.5f*(l+r),t, l,b, r,b); }
+
+inline void viewChild(float l, float t, float r, float b){
+	float w=r-l, h=b-t;
+	float pts[] = {
+		l+w*0.0f, t+h*0.6f,
+		l+w*0.0f, t+h*0.9f,
+		l+w*1.0f, t+h*0.9f,
+		l+w*1.0f, t+h*0.1f,
+		l+w*0.0f, t+h*0.1f,
+		l+w*0.0f, t+h*0.6f,
+		l+w*0.7f, t+h*0.6f,
+		l+w*0.7f, t+h*0.1f
+	};
+	paint(LineStrip, (Point2*)pts, GLV_ARRAY_SIZE(pts)/2);
+}
+
+inline void viewSibling(float l, float t, float r, float b){
+	float w=r-l, h=b-t;
+	float pts[] = {
+		l+w*0.2f, t+h*0.6f,
+		l+w*0.0f, t+h*0.6f,
+		l+w*0.0f, t+h*0.0f,
+		l+w*0.8f, t+h*0.0f,
+		l+w*0.8f, t+h*0.4f,
+		l+w*1.0f, t+h*0.4f,
+		l+w*1.0f, t+h*1.0f,
+		l+w*0.2f, t+h*1.0f,
+		l+w*0.2f, t+h*0.4f,
+		l+w*0.8f, t+h*0.4f
+	};
+	paint(LineStrip, (Point2*)pts, GLV_ARRAY_SIZE(pts)/2);
+}
+
+inline void x(float l, float t, float r, float b){ shape(Lines, l,t, r,b, l,b, r,t); }
+
 
 
 inline void paint(int prim, Point2 * verts, int numVerts){
@@ -402,17 +693,16 @@ inline void paint(int prim, Point2 * verts, Color * cols, int numVerts){
 	glDrawArrays(prim, 0, numVerts);
 	glDisableClientState(GL_COLOR_ARRAY);
 }
-
-inline void paint(int prim, Point2 * verts, unsigned * indices, int numIndices){
+inline void paint(int prim, Point2 * verts, index_t * indices, int numIndices){
 	glVertexPointer(2, GL_FLOAT, 0, verts);
-	glDrawElements(prim, numIndices, GL_UNSIGNED_INT, indices);
+	glDrawElements(prim, numIndices, GLV_INDEX, indices);
 }
 
-inline void paint(int prim, Point2 * verts, Color * cols, unsigned * indices, int numIndices){
+inline void paint(int prim, Point2 * verts, Color * cols, index_t * indices, int numIndices){
 	glEnableClientState(GL_COLOR_ARRAY);
 	glVertexPointer(2, GL_FLOAT, 0, verts);
 	glColorPointer(4, GL_FLOAT, 0, cols);
-	glDrawElements(prim, numIndices, GL_UNSIGNED_INT, indices);
+	glDrawElements(prim, numIndices, GLV_INDEX, indices);
 	glDisableClientState(GL_COLOR_ARRAY);
 }
 
@@ -429,16 +719,16 @@ inline void paint(int prim, Point3 * verts, Color * cols, int numVerts){
 	glDisableClientState(GL_COLOR_ARRAY);
 }
 
-inline void paint(int prim, Point3 * verts, unsigned * indices, int numIndices){
+inline void paint(int prim, Point3 * verts, index_t * indices, int numIndices){
 	glVertexPointer(3, GL_FLOAT, 0, verts);
-	glDrawElements(prim, numIndices, GL_UNSIGNED_INT, indices);
+	glDrawElements(prim, numIndices, GLV_INDEX, indices);
 }
 
-inline void paint(int prim, Point3 * verts, Color * cols, unsigned * indices, int numIndices){
+inline void paint(int prim, Point3 * verts, Color * cols, index_t * indices, int numIndices){
 	glEnableClientState(GL_COLOR_ARRAY);
 	glVertexPointer(3, GL_FLOAT, 0, verts);
 	glColorPointer(4, GL_FLOAT, 0, cols);
-	glDrawElements(prim, numIndices, GL_UNSIGNED_INT, indices);
+	glDrawElements(prim, numIndices, GLV_INDEX, indices);
 	glDisableClientState(GL_COLOR_ARRAY);
 }
 
@@ -446,25 +736,13 @@ inline void paint(int prim, Point3 * verts, Color * cols, unsigned * indices, in
 // [-1, 0) -> -0.5
 // [ 0, 1) ->  0.5
 // [ 1, 2) ->  1.5
-inline int pix(float v){ return v>=0 ? (int)(v+0.5) : (int)(v-0.5); }
-
-inline void plus(float l, float t, float r, float b){
-	float mx = 0.5*(l+r);
-	float my = 0.5*(t+b);
-	shape(Lines, mx,t, mx,b, l,my, r,my);
-}
-
-template<int N, int M, int L>
-void rose(float l, float t, float r, float b){
-	Point2 pts1[N], pts2[N];
-	genEllipse(pts1,N,1, -0.25, M, l,t,r,b);
-	genEllipse(pts2,N,1, -0.25, L, l,t,r,b);
-	for(int i=0; i<N; ++i){
-		pts1[i].x = (pts1[i].x+pts2[i].x)*0.5;
-		pts1[i].y = (pts1[i].y+pts2[i].y)*0.5;
-	}
-	paint(LineLoop, pts1,N);
-}
+#ifdef GLV_PLATFORM_WIN
+inline int pix(float v){ return v>=0 ? (int)(v+0.5f) : (int)(v-0.5f); }
+inline float pixc(float v){ return pix(v) + 0.5f; }
+#else
+inline int pix(float v){ return lrintf(v); }
+inline float pixc(float v){ return rintf(v) + 0.5f; }
+#endif
 
 //template<int N, int M>
 //inline void star(float l, float t, float r, float b){ pgon(l,t,r-l,b-t,N,-0.25,M); }
@@ -484,14 +762,6 @@ inline void shape(int prim, float x0, float y0, float x1, float y1, float x2, fl
 	paint(prim, (Point2 *)v, 4);
 }
 
-inline void rectangle(float l, float t, float r, float b){ shape(TriangleStrip, l,t, l,b, r,t, r,b); }
-inline void stroke(float w){ lineWidth(w); pointSize(w); }
-inline void triangleD(float l, float t, float r, float b){ shape(Triangles, 0.5*(l+r),b, r,t, l,t); }
-inline void triangleL(float l, float t, float r, float b){ shape(Triangles, l,0.5*(t+b), r,b, r,t); }
-inline void triangleR(float l, float t, float r, float b){ shape(Triangles, r,0.5*(t+b), l,t, l,b); }
-inline void triangleU(float l, float t, float r, float b){ shape(Triangles, 0.5*(l+r),t, l,b, r,b); }
-inline void x(float l, float t, float r, float b){ shape(Lines, l,t, r,b, l,b, r,t); }
-
 
 // core drawing routines
 inline void clearColor(const Color& c){ clearColor(c.r, c.g, c.b, c.a); }
@@ -505,35 +775,80 @@ inline void scale(float v){ scale(v,v,v); }
 inline void translateX(float x){ translate(x, 0, 0); }
 inline void translateY(float y){ translate(0, y, 0); }
 inline void translateZ(float z){ translate(0, 0, z); }
+inline void scissorGUI(int l, int t, int w, int h, int windowH){
+	scissor(l, windowH-t-h, w, h);
+}
 
 
 // platform dependent
-inline void blendFunc(int sfactor, int dfactor){ glBlendFunc(sfactor, dfactor); }
+inline void blendFunc(int s, int d){ glBlendFunc(s,d); UserCommands::get()->blendFunc(s,d); }
 inline void blendAdd(){ glBlendEquation(GL_FUNC_ADD); blendFunc(GL_SRC_COLOR, GL_ONE); }
 inline void blendTrans(){ glBlendEquation(GL_FUNC_ADD); blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); }
 inline void clear(int mask){ glClear(mask); }
 inline void clearColor(float r, float g, float b, float a){ glClearColor(r,g,b,a); }
 inline void color(float r, float g, float b, float a){ glColor4f(r,g,b,a); }
 inline void identity(){ glLoadIdentity(); }
-inline void lineStipple(char factor, short pattern){ glLineStipple(factor, pattern); }
-inline void lineWidth(float v){ glLineWidth(v); }
+inline void lineStipple(char factor, short pattern){
+#ifndef GLV_OPENGL_ES1
+	glLineStipple(factor, pattern);
+#endif
+}
+
+#ifdef GLV_OPENGL_ES1
+inline void lineStippling(bool v){}
+#else
+inline void lineStippling(bool v){
+	if(v) enable(GL_LINE_STIPPLE);
+	else  disable(GL_LINE_STIPPLE);
+//	(v ? glEnable : glDisable)(GL_LINE_STIPPLE);
+}
+#endif
+
+inline void lineWidth(float v){ glLineWidth(v); UserCommands::get()->lineWidth(v); }
 inline void matrixMode(int mode){ glMatrixMode(mode); }
-inline void ortho(float l, float r, float b, float t){ gluOrtho2D(l,r,b,t); }
-inline void pointSize(float v){ glPointSize(v); }
+inline void ortho(float l, float r, float b, float t, float n, float f){ 
+	float W = r-l; float W2 = r+l;
+	float H = t-b; float H2 = t+b;
+	float D = f-n; float D2 = f+n;
+	float m[] = {
+		2/W,	0,		0,		0,
+		0,		2/H,	0,		0,
+		0,		0,		-2/D,	0,
+		-W2/W,	-H2/H,	-D2/D,	1
+	};
+
+// TODO: support shader-only rendering (ES2)
+#if 0
+    GLint loc = glGetUniformLocation(draw::shaderProgram(), "Projection");
+    glUniformMatrix4fv(loc, 1, 0, m);
+#else
+	glMultMatrixf(m);
+#endif
+}
+
+inline void perspective(float fovy, float aspect, float near, float far) {
+	float f = 1.f/tan(fovy*(M_PI/180.f)/2.f);
+	float m[] = {
+		f/aspect, 0, 0, 0, 
+		0, f, 0, 0, 
+		0, 0, (far+near)/(near-far), -1, 
+		0, 0, (2*far*near)/(near-far), 0 
+	};
+	glMultMatrixf(m);
+}
+
+inline void pointSize(float v){ glPointSize(v); UserCommands::get()->pointSize(v); }
 inline void pointAtten(float c2, float c1, float c0){
 	GLfloat att[3] = {c0, c1, c2};
 	glPointParameterfv(GL_POINT_DISTANCE_ATTENUATION, att);
 }
 inline void push(){ glPushMatrix(); }
-inline void pushAttrib(int attribs){ glPushAttrib(attribs); }
 inline void pop() { glPopMatrix(); }
-inline void popAttrib(){ glPopAttrib(); }
 inline void rotateX(float deg){ glRotatef(deg, 1.f, 0.f, 0.f); }
 inline void rotateY(float deg){ glRotatef(deg, 0.f, 1.f, 0.f); }
 inline void rotateZ(float deg){ glRotatef(deg, 0.f, 0.f, 1.f); }
 inline void scale(float x, float y, float z){ glScalef(x,y,z); }
-inline void scissor(float x, float y, float w, float h){ glScissor((GLint)x,(GLint)y,(GLsizei)w,(GLsizei)h); }
-inline void texCoord(float x, float y){ glTexCoord2f(x,y); }
+inline void scissor(int x, int y, int w, int h){ glScissor(x,y,w,h); }
 inline void translate(float x, float y, float z){ glTranslatef(x,y,z); }
 inline void viewport(float x, float y, float w, float h){ glViewport((GLint)x,(GLint)y,(GLsizei)w,(GLsizei)h); }
 

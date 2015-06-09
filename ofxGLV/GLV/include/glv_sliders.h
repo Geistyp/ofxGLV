@@ -22,6 +22,7 @@ public:
 	/// Constructor
 	SliderVector(const Rect& r);
 
+
 	/// Get value at selected index
 	double getValue() const { return Widget::getValue<double>(); }
 	
@@ -35,7 +36,7 @@ protected:
 	SliderVector& valueAdd(double val, int idx);
 	SliderVector& valueAdd(double val, int idx, double min, double max);
 
-	void clipAccs(){ for(int i=0; i<Dim; ++i) mAcc[i]=glv::clip(mAcc[i],mMax,mMin); }
+	void clipAccs(){ for(int i=0; i<Dim; ++i) mAcc[i]=glv::clip(mAcc[i],max(),min()); }
 	virtual bool onAssignData(Data& d, int ind1, int ind2);
 };
 
@@ -49,15 +50,33 @@ public:
 	/// @param[in] valX			initial value along x
 	/// @param[in] valY			initial value along y
 	/// @param[in] knobSize		size of slider knob in pixels
-	Slider2D(const Rect& r=glv::Rect(100), double valX=0, double valY=0, space_t knobSize=12);
+	/// @param[in] knobSym		knob symbol
+	Slider2D(
+		const Rect& r=glv::Rect(100),
+		double valX=0, double valY=0,
+		space_t knobSize=12, SymbolFunc knobSym=draw::rectangle
+	);
 
-	space_t knobSize;	///< Size of slider knob
-	
+	/// Get size of slider knob
+	space_t knobSize() const { return mKnobSize; }
+
+	/// Set size of slider knob
+	Slider2D& knobSize(space_t v){ mKnobSize=v; return *this; }
+
+	/// Set knob symbol
+	Slider2D& knobSymbol(SymbolFunc f){ mKnobSym=f; return *this; }
+
+	/// Set whether knob is constrained to always fit within view
+	Slider2D& constrainKnob(bool v){ mConstrainKnob=v; return *this; }
+
 	virtual const char * className() const { return "Slider2D"; }
 	virtual void onDraw(GLV& g);
 	virtual bool onEvent(Event::t e, GLV& g);
-	
-	static void drawKnob(const Slider2D& s);	
+
+protected:
+	space_t mKnobSize;
+	SymbolFunc mKnobSym;
+	bool mConstrainKnob;
 };
 
 
@@ -66,19 +85,21 @@ public:
 class SliderRange : public SliderVector<2>{
 public:
 
-	/// @param[in] r			geometry
-	/// @param[in] val1			initial value on left or top
-	/// @param[in] val2			initial value on right or bottom
+	/// @param[in] r		geometry
+	/// @param[in] val1		initial minimum value (on left or bottom)
+	/// @param[in] val2		initial maximum value (on right or top)
 	SliderRange(const Rect& r=glv::Rect(100,20), double val1=0.25, double val2=0.5);
 	
 	SliderRange& center(double v);							///< Set center of interval
 	SliderRange& centerRange(double center, double range);	///< Set center and range of interval
-	SliderRange& extrema(double min, double max);			///< Set extrema of interval
-	
+	SliderRange& endpoints(double min, double max);			///< Set extrema of interval
+
+	SliderRange& jumpBy(float v);
+
 	/// Sets how much the slider should move when an empty region is clicked.
 	
-	/// The slider is constrained not jump past the click point.
-	///
+	/// @param[in] v	jump distance in [0, 1] of current value interval
+	/// The slider is constrained to not jump past the click point.
 	SliderRange& jump(double v);
 	SliderRange& range(double v);	///< Set range
 	
@@ -111,7 +132,14 @@ public:
 	/// @param[in] knobSize		size of slider knob in pixels
 	SliderGrid(const Rect& r=glv::Rect(100), space_t knobSize=4);
 
-	space_t knobSize; ///< Knob size
+	/// Get size of slider knob
+	space_t knobSize() const { return mKnobSize; }
+
+	/// Set size of slider knob
+	SliderGrid& knobSize(space_t v){ mKnobSize=v; return *this; }
+
+	/// Set knob symbol
+	SliderGrid& knobSymbol(SymbolFunc f){ mKnobSym=f; return *this; }
 
 	virtual const char * className() const { return "SliderGrid"; }
 	virtual void onDraw(GLV& g);
@@ -126,6 +154,8 @@ public:
 	using SliderVector<Dim>::toInterval;
 protected:
 	int cx, cy;
+	space_t mKnobSize;
+	SymbolFunc mKnobSym;
 };
 
 
@@ -134,13 +164,26 @@ protected:
 class Sliders: public Widget{
 public:
 
+	/// Sliding orientation
+	enum Orientation{
+		HORIZONTAL = 0,		/**< Display horizontally */
+		VERTICAL,			/**< Display vertically */
+		AUTO				/**< Orient in direction of largest dimension */
+	};
+
 	/// @param[in] r			geometry
-	/// @param[in] nx			number along x (ignored by fixed size value types)
-	/// @param[in] ny			number along y (ignored by fixed size value types)
+	/// @param[in] nx			number along x
+	/// @param[in] ny			number along y
 	/// @param[in] dragSelect	whether new sliders are selected while dragging
-	Sliders(const Rect& r, int nx, int ny, bool dragSelect=false);
+	Sliders(const Rect& r=Rect(100, 20), int nx=1, int ny=1, bool dragSelect=false);
 
 	virtual ~Sliders(){}
+
+	/// Set knob symbol
+	Sliders& knobSymbol(SymbolFunc f){ mKnobSym=f; return *this; }
+
+	Orientation orientation() const { return mOri; }
+	Sliders& orientation(Orientation v){ mOri=v; return *this; }
 
 	/// Get value at selected index
 	double getValue() const { return Widget::getValue<double>(); }
@@ -156,10 +199,12 @@ public:
 	virtual const char * className() const { return "Sliders"; }
 	
 protected:
+	Orientation mOri;
+	SymbolFunc mKnobSym;
 	double mAcc;
 
+	bool vertOri() const { return VERTICAL==mOri || (AUTO==mOri && tallElems()); }
 	void selectSlider(GLV& g, bool click);
-	bool isVertical() const { return dy() > dx(); }
 };
 
 
@@ -180,27 +225,14 @@ public:
 //there must be at least 3 points
 class FunctionGraph : public View{
 public:
-	class Curve : public Array<float>{
-	public:
-		Curve(int res)
-		: Array<float>(res)
-		{}
-		
-		~Curve() {}
+	struct Curve : public Array<float>{
+		Curve(int res): Array<float>(res){}
 	};
 	
 	struct Knot {
-	public:
-		Knot() : x(0), y(0)
-		{}
-		
-		~Knot() {}
-		
-		Knot(const Knot& k) : x(k.x), y(k.y)
-		{}
-		
-		float x;
-		float y;
+		Knot(): x(0), y(0){}
+		Knot(const Knot& k) : x(k.x), y(k.y){}
+		float x,y;
 	};
 
 public:
@@ -282,7 +314,7 @@ TEM inline bool SliderVector<Dim>::onAssignData(Data& d, int ind1, int ind2){
 }
 
 TEM inline SliderVector<Dim>& SliderVector<Dim>::valueAdd(double add, int dim){
-	return valueAdd(add,dim,mMin,mMax);
+	return valueAdd(add,dim,min(),max());
 }
 
 TEM inline SliderVector<Dim>& SliderVector<Dim>::valueAdd(double add, int dim, double min, double max){	
@@ -297,10 +329,8 @@ TEM inline SliderVector<Dim>& SliderVector<Dim>::valueAdd(double add, int dim, d
 
 
 TEM SliderGrid<Dim>::SliderGrid(const Rect& r, space_t knobSize)
-:	SliderVector<Dim>(r), knobSize(knobSize), cx(0), cy(0)
+:	SliderVector<Dim>(r), cx(0), cy(0), mKnobSize(knobSize), mKnobSym(draw::rectangle)
 {
-	//this->cropSelf = false;
-	this->disable(CropSelf);
 }
 
 TEM void SliderGrid<Dim>::onDraw(GLV& g){
@@ -310,12 +340,13 @@ TEM void SliderGrid<Dim>::onDraw(GLV& g){
 	color(colors().fore);
 	lineWidth(1);
 	frame(cx * w * rDim, (Dim-cy-1) * h * rDim, (cx+1) * w * rDim, (Dim-cy) * h * rDim);
-	draw::enable(LineStipple);
+
+	lineStippling(true);
 	lineStipple(1, 0xAAAA);
 	grid(g.graphicsData(), 0,0,w,h,Dim,Dim, false);
 	shape(Lines,0,h,w,0);
-	draw::disable(LineStipple);
 
+	lineStippling(false);
 	/*
 	float dx = rDim*w;
 	float dy = rDim*h;
@@ -348,27 +379,43 @@ TEM void SliderGrid<Dim>::onDraw(GLV& g){
 	glEnd();
 
 	glColor4f(1, 1, 1, 1.);*/
-	pointSize(knobSize);
+//	pointSize(knobSize);
+//
+//	Point2 pts[Dim*Dim];
+//	for(int i=0; i<Dim; ++i){
+//		float f = (i+to01(getValue(i))) * rDim;
+//		float x = f*w;
+//		
+//		for(int j=0; j<Dim; ++j){
+//			pts[i*Dim+j](x, (1.-(j+to01(getValue(j))) * rDim) * h);
+//		}
+//	}
+//	paint(Points, pts, GLV_ARRAY_SIZE(pts));
 
-	Point2 pts[Dim*Dim];
+	float sz = knobSize();	// size of indicator block
+	float sz2 = sz * 0.5f;
+	color(colors().fore);
+
 	for(int i=0; i<Dim; ++i){
-		float f = (i+to01(getValue(i))) * rDim;
-		float x = f*w;
+		float xmin = i*w*rDim + sz2;
+		float xdia = w*rDim-sz;
+		float x = xmin + this->to01(this->getValue(i))*xdia;
 		
 		for(int j=0; j<Dim; ++j){
-			pts[i*Dim+j](x, (1.-(j+to01(getValue(j))) * rDim) * h);
+			float ymin = (j+1)*h*rDim - sz2;
+			float ydia = -(h*rDim-sz);
+			float y = ymin + this->to01(this->getValue(Dim-1-j))*ydia;
+			mKnobSym((x - sz2), (y - sz2), (x + sz2), (y + sz2));
 		}
 	}
-	paint(Points, pts, GLV_ARRAY_SIZE(pts));
-
 }
 
 TEM bool SliderGrid<Dim>::onEvent(Event::t e, GLV& g){
 
 	switch(e){
 	case Event::MouseDrag:
-					valueAdd( g.mouse().dx()/w * diam() * Dim * g.mouse().sens(), cx);
-		if(cx!=cy)	valueAdd(-g.mouse().dy()/h * diam() * Dim * g.mouse().sens(), cy);
+					this->valueAdd( g.mouse().dx()/w * diam() * Dim * g.mouse().sens(), cx);
+		if(cx!=cy)	this->valueAdd(-g.mouse().dy()/h * diam() * Dim * g.mouse().sens(), cy);
 		break;
 		
 	case Event::MouseDown:
@@ -381,8 +428,8 @@ TEM bool SliderGrid<Dim>::onEvent(Event::t e, GLV& g){
 		if(g.mouse().left() && !g.mouse().right()){
 			float cw = w/Dim;
 			float ch = h/Dim;
-						setValue(toInterval(    (g.mouse().xRel()/cw - cx)), cx);
-			if(cx!=cy)	setValue(toInterval(1.f-(g.mouse().yRel()/ch - ((Dim-1)-cy))), cy);
+						this->setValue(toInterval(    (g.mouse().xRel()/cw - cx)), cx);
+			if(cx!=cy)	this->setValue(toInterval(1.f-(g.mouse().yRel()/ch - ((Dim-1)-cy))), cy);
 		}
 		break;
 		

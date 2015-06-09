@@ -5,15 +5,13 @@
 	See COPYRIGHT file for authors and license information */
 
 #include <string>
+#include <ctype.h>
 #include <string.h>
 #include "glv_core.h"
 #include "glv_font.h"
 #include "glv_widget.h"
 
 namespace glv{
-
-typedef ChangedValue<std::string *> TextViewChange;
-
 
 /// Basic label widget
 class Label : public Widget {
@@ -22,17 +20,18 @@ public:
 	/// Prototype for constructor
 	struct Spec{
 		/// Constructor
-		Spec(Place::t posAnch, space_t dx, space_t dy, float size=8, bool vert=false)
-		:	posAnch(posAnch), dx(dx), dy(dy), size(size), vert(vert){}
+		Spec(Place::t posAnch=Place::TL, space_t dx=0, space_t dy=0, float size=8, bool vert=false)
+		:	posAnch(posAnch), dx(dx), dy(dy), size(size), stroke(1), vert(vert){}
 		
-		/// Set all members
-		Spec& set(Place::t posAnch_, space_t dx_, space_t dy_, float size_=8, bool vert_=false){
-			posAnch=posAnch_; dx=dx_; dy=dy_; size=size_; vert=vert_; return *this;
-		}
+//		/// Set all members
+//		Spec& set(Place::t posAnch_, space_t dx_, space_t dy_, float size_=8, bool vert_=false){
+//			posAnch=posAnch_; dx=dx_; dy=dy_; size=size_; vert=vert_; return *this;
+//		}
 		
 		Place::t posAnch;
 		space_t dx, dy;
 		float size;
+		float stroke;
 		bool vert;
 	};
 
@@ -40,9 +39,9 @@ public:
 
 	/// @param[in] text		Label text
 	/// @param[in] spec		Label spec prototype
-	Label(const std::string& str, const Spec& spec);
+	Label(const std::string& text, const Spec& spec);
 
-	/// @param[in] str		Label text
+	/// @param[in] text		Label text
 	/// @param[in] vert		Whether to draw label vertically
 	Label(const std::string& text, bool vert);
 
@@ -61,8 +60,11 @@ public:
 	/// @param[in] vert		Whether to draw label vertically
 	Label(const std::string& text, Place::t posAnch, space_t px, space_t py, bool vert=false);
 
+	float stroke() const { return mStroke/256.; }
+
 	Label& align(float vx, float vy);		///< Set alignment factors for label area
 	Label& size(float pixels);				///< Set label size
+	Label& stroke(float pixels);			///< Set stroke width
 	Label& vertical(bool v);				///< Set whether label is displayed vertically
 
 	/// Get value
@@ -73,6 +75,7 @@ public:
 
 protected:
 	float mAlignX, mAlignY;
+	unsigned short mStroke;
 	bool mVertical;
 	
 	void fitExtent();
@@ -85,8 +88,249 @@ protected:
 		}
 		return false;
 	}
+
+	virtual void onResize(space_t dx, space_t dy){
+		Widget::onResize(dx,dy);
+		fitExtent();
+	}
 };
 
+
+/// View for editing text
+class TextView : public Widget{
+public:
+
+	/// Character input filter predicate
+
+	/// @param[in] text			the current text
+	/// @param[in] pos			insertion position within text
+	/// @param[in] newChar		the new character to be added to the string
+	/// \returns whether the character should be inserted into the string
+	typedef bool (*CharacterInputFilter)(const std::string& text, int pos, int newChar);
+
+	/// Numeric character input filter
+	static bool filterNumeric(const std::string& text, int pos, int newChar);
+
+
+	/// Constructor
+	TextView(const Rect& r=glv::Rect(200,16), float textSize=8);
+
+
+	/// Get value
+	const std::string& getValue() const { return data().elems<std::string>()[0]; }
+
+	/// Returns true if no text is present
+	bool empty() const { return getValue().empty(); }
+
+	/// Get current cursor position
+	int cursorPos() const { return mPos; }
+
+	/// Get current selection range
+	int selectionRange() const { return mSel; }
+
+
+	/// Set cursor position
+	void cursorPos(int v);
+	
+	/// Put cursor past end of text
+	void cursorEnd(){ cursorPos(mText.size()); }
+
+	/// Set the character input filter
+	TextView& filter(CharacterInputFilter v){ mFilter=v; return *this; }
+
+	/// Set size of font in pixels
+	TextView& size(float pixels);
+
+	/// Select a number of characters away from cursor position
+	void select(int v);
+	void selectAll();
+	void deselect(){ mSel=0; }
+
+
+	virtual const char * className() const { return "TextView"; }
+	virtual void onAnimate(double dsec);
+	virtual void onDraw(GLV& g);	
+	virtual bool onEvent(Event::t e, GLV& g);
+
+protected:
+	std::string mText;		// The text string
+
+	float mSpacing;
+//	float mPadX;
+	int mPos;
+	int mSel;	// selection range (0==none)
+	float mBlink;	// cursor blink phase ( on = [0, 0.5); off = [0.5, 1) )
+	CharacterInputFilter mFilter;
+
+	bool validPos(){ return mPos<=int(mText.size()) && mPos>0; }
+	int xToPos(float x); // convert x pixel position to character position
+	void deleteSelected();
+	bool textSelected(){ return mSel!=0; }
+	void deleteText(int start, int num);
+
+	virtual bool onAssignData(Data& d, int ind1, int ind2);
+};
+
+
+
+// Allows selection from a list of values
+class ListView : public Widget{
+public:
+
+	ListView(const Rect& r=Rect(0), int nx=0, int ny=0);
+
+	ListView& fitExtent();
+
+	ListView& selectValue(const std::string& v);
+
+	const std::string getValue() const { return Widget::getValue<std::string>(); }
+	const std::string getValue(int i) const { return Widget::getValue<std::string>(i); }
+	const std::string getValue(int i1, int i2) const { return Widget::getValue<std::string>(i1, i2); }
+
+	virtual const Data& getData(Data& dst) const;
+	virtual void setData(const Data& d);
+
+	virtual const char * className() const { return "ListView"; }
+	virtual void onDraw(GLV& g);
+	virtual bool onEvent(Event::t e, GLV& g);
+
+protected:
+};
+
+
+
+// Drop-down list
+class DropDown : public TextView {
+public:
+	typedef std::vector<std::string> Items;
+
+	/// @param[in] r			geometry
+	/// @param[in] textSize		size of text, in pixels
+	DropDown(const Rect& r=glv::Rect(200,16), float textSize=8);
+
+	/// @param[in] r			geometry
+	/// @param[in] item1		item 1
+	/// @param[in] item2		item 2
+	/// @param[in] textSize		size of text, in pixels
+	DropDown(
+		const Rect& r,
+		const std::string& item1, const std::string& item2,
+		float textSize=8
+	);
+
+	/// @param[in] r			geometry
+	/// @param[in] item1		item 1
+	/// @param[in] item2		item 2
+	/// @param[in] item3		item 3
+	/// @param[in] textSize		size of text, in pixels
+	DropDown(
+		const Rect& r,
+		const std::string& item1, const std::string& item2, const std::string& item3,
+		float textSize=8
+	);
+
+	/// @param[in] r			geometry
+	/// @param[in] item1		item 1
+	/// @param[in] item2		item 2
+	/// @param[in] item3		item 3
+	/// @param[in] item4		item 4
+	/// @param[in] textSize		size of text, in pixels
+	DropDown(
+		const Rect& r,
+		const std::string& item1, const std::string& item2, const std::string& item3, const std::string& item4,
+		float textSize=8
+	);
+
+	virtual ~DropDown();
+
+
+	/// Get index of currently selected item
+	int selectedItem() const { return mSelectedItem; } //return mItemList.selected(); }
+
+	/// Get reference to items
+	Items& items(){ return mItems; }
+
+	/// Add an item to the list
+	DropDown& addItem(const std::string& v);
+
+	virtual const char * className() const { return "DropDown"; }
+	virtual void onDraw(GLV& g);
+	virtual bool onEvent(Event::t e, GLV& g);
+
+protected:
+	struct ItemList : public ListView{
+		ItemList(DropDown& v): dd(v){}
+		virtual bool onEvent(Event::t e, GLV& g);
+		DropDown& dd;
+	} mItemList;
+
+	Items mItems;		// list data that ItemList references
+	int mSelectedItem;
+
+	void init();
+	void showList();
+	void hideList(GLV& g);
+	virtual bool onAssignData(Data& d, int ind1, int ind2);
+
+/* TODO from ListSelect:
+	/// Get index of an item
+	
+	/// \returns index of item or number of items if the item is not found
+	///
+	int indexOf(const std::string& item) const {
+		for(unsigned i=0; i<mItems.size(); ++i){
+			if(mItems[i] == item) return i;
+		}
+		return mItems.size();
+	}
+
+	/// Select item based on index
+	ListSelect& select(int i){
+		mSelected = glv::clip<int>(i,mItems.size()-1); return *this;
+	}
+
+	/// Select item based on name
+	ListSelect& select(const std::string& v){
+		int i = indexOf(v);
+		if(i < int(mItems.size())) select(i);
+		return *this;
+	}
+*/
+};
+
+
+/// Search box
+class SearchBox : public TextView{
+public:
+	typedef std::vector<std::string> Items;
+
+	/// @param[in] r			geometry
+	/// @param[in] textSize		size of text, in pixels
+	SearchBox(const Rect& r=glv::Rect(200,16), float textSize=8);
+
+	virtual ~SearchBox();
+
+	/// Get whether results list is currently showing
+	bool listShowing() const { return mItemList.visible(); }
+
+	/// Get reference to items
+	Items& items(){ return mItems; }
+
+	/// Add item to search
+	SearchBox& addItem(const std::string& v);
+
+	virtual const char * className() const { return "SearchBox"; }
+	virtual bool onEvent(Event::t e, GLV& g);
+
+protected:
+	struct ItemList : public ListView{
+		ItemList(SearchBox& v): sb(v){}
+		virtual bool onEvent(Event::t e, GLV& g);
+		SearchBox& sb;
+	} mItemList;
+
+	Items mItems;
+};
 
 
 
@@ -100,328 +344,114 @@ protected:
 /// amount determines the spacing around the digits. For best looking
 /// characters use a Rect dimension ns x s where 'n' is the number of digits
 /// and 's' is the character size plus padding amount.
-class NumberDialer : public Widget{
+class NumberDialers : public Widget{
 public:
 
-	/// @param[in] r		Geometry
-	/// @param[in] numInt	Number of places in integer part
-	/// @param[in] numFrac	Number of places in fraction part
-	NumberDialer(const Rect& r, int numInt, int numFrac);
-
-	/// @param[in] r		Geometry
 	/// @param[in] numInt	Number of places in integer part
 	/// @param[in] numFrac	Number of places in fraction part
 	/// @param[in] max		Maximum value
 	/// @param[in] min		Minimum value
-	NumberDialer(const Rect& r, int numInt, int numFrac, double max, double min);
+	/// @param[in] nx		Number of instances along x
+	/// @param[in] ny		Number of instances along y
+	NumberDialers(int numInt=3, int numFrac=2, double max=100, double min=0, int nx=1, int ny=1);
 
-	NumberDialer(space_t h, space_t l, space_t t, int numInt, int numFrac, double max, double min);
-
-	NumberDialer(int numInt, int numFrac, double max, double min);
-
-	NumberDialer(const NumberDialer& v);
-
-	int sizeFraction() const;
-	int sizeInteger() const;
+	/// Copy constructor
+	NumberDialers(const NumberDialers& v);
 
 	/// Get value
 	double getValue() const { return Widget::getValue<double>(); }
+
+	/// Get value at 1D index
+	double getValue(int i) const { return Widget::getValue<double>(i); }
 	
-	/// Set padding amount from top and bottom.
-	NumberDialer& padding(space_t v);
+	/// Get value at 2D index
+	double getValue(int i1, int i2) const { return Widget::getValue<double>(i1,i2); }
+
+
+	/// Get whether the display is dimmed if the value is zero
+	bool dimZero() const { return mDimZero; }
+
+	/// Get number of digits in fraction part
+	int sizeFraction() const;
 	
+	/// Get number of digits in integer part
+	int sizeInteger() const;
+
+
+	/// Set whether the display is dimmed if the value is zero
+	NumberDialers& dimZero(bool v){ mDimZero=v; return *this; }
+
+	/// Set size of font
+	NumberDialers& fontSize(float pixels){ font().size(pixels); fitExtent(); return *this; }
+
 	/// Set max and min output range. Values larger than displayable range will be clipped.
-	NumberDialer& interval(double max, double min=0);
+	NumberDialers& interval(double max, double min=0);
+
+	/// Set padding amount
+	NumberDialers& padding(double v){ Widget::padding(v); fitExtent(); return *this; }
 
 	/// Set number of digits in integer and fraction parts
-	NumberDialer& resize(int numInt, int numFrac);
+	NumberDialers& resize(int numInt, int numFrac);
 
 	/// Set whether to show sign
-	NumberDialer& showSign(bool v);
+	NumberDialers& showSign(bool v);
 
-	/// Set value
-	NumberDialer& setValue(double v);
 
-	virtual const char * className() const { return "NumberDialer"; }
+	virtual const char * className() const { return "NumberDialers"; }
 	virtual void onDraw(GLV& g);
 	virtual bool onEvent(Event::t e, GLV& g);
 
-protected:
-	int mNI, mNF, mPos;		// # digits in integer, # digits in fraction, selected digit position
-	int mVal;				// current value
-	space_t mPad;
-	float mAcc;
-	double mValMul;
-	bool mShowSign;
-	
-	void valSet(int v){	// converts fixed point to floating point value
-		mVal = glv::clip(v, convert(mMax), convert(mMin));
-		double val = mVal * mValMul;
-		Widget::setValue(val);
-	}
-	
-//	virtual void onSetValueNotify(const double& v, int idx){
-//		if(v == Base::values()[idx]) return;
-//		Base::values()[idx] = v;
-//		notify(Update::Value, NumberDialerChange(value()));	
-//	}
+	virtual void onCellChange(int indexOld, int indexNew);
 
-	void setWidth(){ w = (h-2)*size(); }
-	int convert(double v) const { return (v/mValMul) + (v>0. ? 0.5:-0.5); }
-	int mag() const { return pow(10., size()-1-dig()); }
+protected:
+	//Lazy<TextView> mTextEntry;
+	static TextView mTextEntry;
+	int mNI, mNF, mPos;		// # digits in integer, # digits in fraction, selected digit position
+	float mAcc;
+	bool mShowSign, mOverwriteMode, mDimZero, mTextEntryMode;
+
+	void fitExtent();
+
 	bool onNumber() const { return mPos!=signPos(); }
 	int dig() const { return mPos; }
-	void dig(int v){ mPos = v<0 ? 0 : v>=size() ? size()-1 : v; }
+	void dig(int v){ mPos = v<0 ? 0 : v>=numDigits() ? numDigits()-1 : v; }
 	double maxVal() const { return (pow(10., mNI+mNF)-1)/pow(10., mNF); }
+	int numDigits() const { return mNI + mNF + numSignDigits(); }
+	int numSignDigits() const { return mShowSign ? 1:0; }
 	int signPos() const { return mShowSign ? 0 : -1; }
-	int size() const { return mNI + mNF + sizeSign(); }
-	int sizeSign() const { return mShowSign ? 1:0; }
-	void valAdd(int v){	valSet(v + mVal); }
+	int valInt(int ix, int iy=0) const {
+		double v = data().at<double>(ix,iy);
+		return (int)(v * pow(10., mNF) + (v>0. ? 0.5:-0.5));
+	}
+
+	double mag(int digit) const { return pow(10., numDigits()-1-digit - mNF); }
+	double mag() const { return mag(dig()); }
+	void valAdd(double v){ setValue(getValue() + v); }
 
 	void flipSign(){
-		if((mVal>0 && -mVal>=convert(mMin)) || (mVal<0 && -mVal<=convert(mMax)))
-			valSet(-mVal);
+		double v = getValue();
+		if((v>0 && -v>=min()) || (v<0 && -v<=max()))
+			setValue(-v);
 	}
-
-//NumberDialer& NumberDialer::setValue(double v){ valSet(convert(v)); return *this; }
-//	virtual bool onAssignData(Data& d, int ind1, int ind2){
-//	
-//		double v = d.at<double>(ind1, ind2);
-//	
-//		if(Widget::onAssignData(d, ind1, ind2)){
-//			return true;
-//		}
-//		return false;
-//	}
 };
 
 
 
-/// View for editing text
-class TextView : public Widget{
+/// Number editor with individually controllable digits
+class NumberDialer: public NumberDialers{
 public:
-	/// Constructor
-	TextView(const Rect& r=glv::Rect(200,16), float textSize=8);
 
-	/// Get value
-	const std::string& getValue() const { return data().elems<std::string>()[0]; }
+	/// @param[in] numInt	Number of places in integer part
+	/// @param[in] numFrac	Number of places in fraction part
+	/// @param[in] max		Maximum value
+	/// @param[in] min		Minimum value
+	NumberDialer(int numInt=3, int numFrac=2, double max=100, double min=0);
 
-	/// Set size of font in pixels
-	TextView& size(float pixels);
+	/// Copy constructor
+	NumberDialer(const NumberDialer& v);
 
-	void select(int v);
-	void deselect(){ mSel=0; }
-
-	virtual const char * className() const { return "TextView"; }
-	virtual void onDraw(GLV& g);	
-	virtual bool onEvent(Event::t e, GLV& g);
-
-protected:
-	std::string mText;		// The text string
-
-	float mSpacing;
-	float mPadX;
-	int mPos;
-	int mSel;	// selection range (0==none)
-	int mBlink;
-	void setPos(int v); // set cursor position
-	bool validPos(){ return mPos<=int(mText.size()) && mPos>0; }
-	int xToPos(float x); // convert x pixel position to character position
-	void deleteSelected();
-	bool selected(){ return mSel!=0; }
-	void deleteText(int start, int num);
-
-	virtual bool onAssignData(Data& d, int ind1, int ind2);
+	virtual const char * className() const { return "NumberDialer"; }
 };
-
-
-
-class ListSelect : public View {
-public:
-	ListSelect(const Rect& r=Rect(140,16), space_t pad=4)
-	:	View(r), mSelected(0), mPad(pad)
-	{}
-
-	ListSelect& add(const std::string& v){
-		mItems.push_back(v); return *this;
-	}
-
-	ListSelect& select(int i){
-		mSelected = glv::clip<int>(i,mItems.size()-1); return *this;
-	}
-
-	int selected() const { return mSelected; }
-
-	virtual const char * className() const { return "ListSelect"; }
-
-	virtual void onDraw(GLV& g){
-		using namespace glv::draw;
-		if(mItems.size() < 1) return;
-		font().size(height() - 2*mPad);
-		
-		color(colors().text);
-		stroke(1);
-		font().render(mItems[selected()].c_str(), mPad, mPad);
-	}
-
-	virtual bool onEvent(Event::t e, GLV& g){
-	
-		const Keyboard& k = g.keyboard();
-		const Mouse& m = g.mouse();
-	
-		switch(e){
-		case Event::KeyDown:
-			switch(k.key()){
-			case Key::Up:	select(selected()-1); return false;
-			case Key::Down:	select(selected()+1); return false;
-			default:;
-			}
-			break;
-		case Event::MouseDown:
-			return false;
-		case Event::KeyUp:
-		case Event::MouseUp: return false;
-
-		case Event::MouseDrag:{
-			int dy = m.y() - m.y(m.button());
-			int inc = ((dy+800000) % 8 == 0) * (dy<0?-1:1);
-			select(selected()+inc);
-			return false;
-		}
-			
-		default:;
-		}
-		return true;
-	}
-
-private:
-	int mSelected;
-	space_t mPad;
-	std::vector<std::string> mItems;
-};
-
-
-
-// Base class for number displaying/editing box(es)
-
-// Deprecated in favor of NumberDialer.
-//template <class V>
-//class NumberBoxBase : public ValueWidget<V>{
-//public:
-//	GLV_INHERIT_VALUEWIDGET
-//
-//	NumberBoxBase(const Rect& r, int nx=1, int ny=1, const char * format="% g")
-//	:	ValueWidget<V>(r, nx, ny, 10, false, true, true),
-//		mStep(1), mFormat(format)
-//	{}
-//	
-//	NumberBoxBase& step(float v){ mStep=v; return *this; }
-//
-//	virtual void onDraw(){
-//		using namespace glv::draw;
-//
-//		float dx = w/sizeX();
-//		float dy = h/sizeY();
-//
-//		// draw the grid lines
-//		//ValueWidget<V>::drawGrid(*this);
-//
-//		// draw selected frame
-//		color(colors().fore);
-//		float fx = dx*selectedX(), fy = dy*selectedY();
-//		frame(fx, fy, fx+dx, fy+dy);
-//
-//		float p_2 = padding()*0.5;
-//		float textScale = (dy-padding())/Glyph::baseline();
-//		float rTextScale = 1./textScale;
-//		
-//		// Draw cursor
-//		color(colors().text, colors().text.a*0.3);
-//		float curx = mNumEnt.pos() * Glyph::width()*textScale + selectedX()*this->dx() + p_2;
-//		float cury = selectedY() * this->dy();
-//		draw::rect(curx, cury, curx+Glyph::width(), cury+this->dy());
-//		
-//		lineWidth(1);
-//		
-//		char buf[16]; // text buffer
-//		
-//		// Draw text
-//		// TODO: turn this into a display list
-//		color(colors().text);
-//		for(int i=0; i<sizeX(); ++i){
-//			
-//			float x = dx*i + p_2;
-//		
-//			for(int j=0; j<sizeY(); ++j){
-//				int ind = index(i,j);
-//				float y = dy*j + p_2;
-//
-//				float v = value()[ind];
-//				snprintf(buf, sizeof(buf), mFormat, v);
-//				//float len = strlen(buf);
-//				//text(buf, p - (8.f * len * 0.5f), 4); // center text
-//				
-//				push();
-//				scale(textScale, textScale);
-//				text(buf, pix(x)*rTextScale, pix(y)*rTextScale);
-//				pop();
-//			}
-//		}
-//		
-//	}
-//	
-//	virtual bool onEvent(Event::t e, GLV& g){
-//		switch(e){		
-//		case Event::MouseDown:
-//			ValueWidget<V>::onSelectClick(g);
-//			mNumEnt.value(value()[selected()]);
-//			return false;
-//			
-//		case Event::MouseUp:
-//			break;
-//			
-//		case Event::KeyDown:
-//		
-//			ValueWidget<V>::onSelectKey(g);
-//			#define SETVAL value()[selected()] = mNumEnt.value()
-//
-//			if(mNumEnt.read(g.keyboard.key())){
-//				SETVAL;
-//			}
-//
-//			switch(g.keyboard.key()){
-//			case 'w':	mNumEnt.bwd1(); return false;
-//			case 'e':	mNumEnt.fwd1(); return false;
-//			case 'a':	mNumEnt.addAtPos( 1); SETVAL; return false;
-//			case 'z':	mNumEnt.addAtPos(-1); SETVAL; return false;
-//			
-//			case Key::Delete:	mNumEnt.del(); SETVAL; return false;
-////			case 'a': value()[selected()] += mStep; return false;
-////			case 'z': value()[selected()] -= mStep; return false;
-////			case '\\': mNumEnt.reset(); return false;
-//			//case Key::Delete: mNumEnt.back1(); return false;
-//			default:;
-//			}
-//		
-//			break;
-//			#undef SETVAL
-//		default: break;
-//		}
-//		return true;
-//	}
-//
-//
-//protected:
-//	float mStep;
-//	const char * mFormat;
-//	NumberEntry mNumEnt;
-//};
-
-
-
-
-
-
 
 } // glv::
 #endif

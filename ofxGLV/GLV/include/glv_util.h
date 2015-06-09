@@ -28,6 +28,25 @@ template<class T> inline void sort(T& a, T& b){ if(a>b){ T t=a; a=b; b=t; }  }
 
 
 
+/// Lazy initialization wrapper
+template<class T>
+class Lazy{
+public:
+	Lazy(): mValue(0){}
+	~Lazy(){ clear(); }
+
+	const T& operator()() const { return create(); }
+	T& operator()(){ return create(); }
+
+	bool created() const { return 0!=mValue; }
+	void clear(){ delete mValue; mValue=0; }
+
+protected:
+	T& create() const { if(!mValue){ mValue = new T(); } return *mValue; }
+	mutable T * mValue;
+};
+
+
 /// Smart pointer functionality to avoid deleting references.
 
 ///	When a class contains pointers to other objects, sometimes it is not clear
@@ -165,6 +184,8 @@ public:
 
 	/// Returns number of elements
 	int size() const { return mSize; }
+	
+	const T& last() const { return mElems[size()-1]; }
 
 	/// Assign value to elements
 
@@ -180,7 +201,7 @@ public:
 	void reset(){ setSize(0); }
 
 	/// Resize buffer
-	
+
 	/// This will set both the size and capacity of the buffer to the requested 
 	/// size. If the number is smaller than the current size the buffer is 
 	/// truncated, otherwise the buffer is extended and new elements are
@@ -201,7 +222,7 @@ public:
 	void append(const T &v, double growFactor=2){
 		if(size() >= capacity()){
 			T vcopy = v; // 'v' may become invalidated after resize
-			mElems.resize(size() ? size()*growFactor : 4);
+			mElems.resize(size() ? int(size()*growFactor) : 4);
 			Alloc::construct(&mElems[0] + size(), vcopy);
 		}
 		else{
@@ -307,8 +328,31 @@ public:
 		return *this;
 	}
 
+
+	/// Scale interval
+	Interval& scale(const T& v){
+		mMin *= v; mMax *= v;
+		return *this;
+	}
+
+	/// Scale interval
+	
+	/// @param[in] v			scale amount
+	/// @param[in] centerFrac	scaling center as fraction between endpoints 
+	Interval& scale(const T& v, const T& centerFrac){
+		T trans = fromUnit(centerFrac);
+		translate(-trans);
+		mMin *= v; mMax *= v;
+		translate( trans);
+		return *this;
+	}
+
 	/// Translate interval by fixed amount
-	Interval& translate(const T& v){ mMin+=v; mMax+=v; return *this; }
+	Interval& translate(const T& v){
+		mMin += v; mMax += v;
+		return *this;
+	}
+
 
 	/// Set maximum endpoint
 	Interval& max(const T& v){ return endpoints(min(), v); }
@@ -321,6 +365,48 @@ private:
 
 	const T& min(const T& a, const T& b){ return a<b?a:b; }
 	const T& max(const T& a, const T& b){ return a>b?a:b; }
+};
+
+
+
+/// Maps characters (i.e., keyboard keys) to integers
+template <int KeyMax=128, int KeyMin=0>
+class CharMap{
+public:
+	CharMap(const char * keySeq="", char begin=0, char unmappedVal=-128)
+	:	mUnmapped(unmappedVal)
+	{
+		reset();
+		set(keySeq, begin);
+	};
+
+	static const int size(){ return N; }
+
+	const char& operator[](int key) const { return mMap[key-KeyMin]; }
+	char& operator[](int key){ return mMap[key-KeyMin]; }
+
+	bool mapped(int key) const { return (*this)[key] != mUnmapped; }
+
+	CharMap& set(const char * keySeq, char begin=0){
+		int c=0;
+		while(keySeq[c]){
+			(*this)[int(keySeq[c])] = begin;
+			++c; ++begin;
+		}
+		//for(int i=0; i<128; ++i) printf("%3d %2d\n", i, mMap[i]);
+		return *this;
+	}
+
+	CharMap& set(char index, char value){
+		(*this)[int(index)] = value; return *this;
+	}
+
+	void reset(){ for(int i=0; i<size(); ++i) mMap[i] = mUnmapped; }
+
+private:
+	static const int N = KeyMax-KeyMin+1;
+	char mMap[N];
+	char mUnmapped;
 };
 
 
@@ -610,49 +696,6 @@ bool SmartObject<T>::withinFootPrint(void * m){
 //	bool mHasPoint;
 //	#undef BUFSIZE
 //};
-
-//template <class T, int Nx=1, int Ny=1>
-//class RangedValues : public Values<T, Nx, Ny>{
-//public:
-//
-//	T& operator[](int i){ return mVal[i]; }
-//	const T& operator[](int i) const { return mVal[i]; }
-//
-//	RangedValues& range(T max, T min=0){ mMax=max; mMin=min; return *this; }
-//
-//	
-//
-//protected:
-//	T mMin, mMax;
-//	
-//	void valueSet(T v){
-//		v>mMax ? v=mMax : v<mMin ? v=mMin : 0;
-//		value()[selected()] = v;
-//	}
-//	
-//};
-
-//template <class V>
-//class ValuesRef{
-//public:
-//	ValuesRef(): mVal(0){}
-//
-//	V& data(){ return *mVal; }
-//	const V& data() const { return *mVal; }
-//
-//	// interface methods
-//	void resize(int nx, int ny){}
-//	
-//	void ref(V& r){ mVal = &r; }
-//	
-//protected:
-//	V * mVal;
-//};
-
-
-// We something that wraps around more atomic types to give them all a common
-// interface. However, if the atomic type has the interface methods already,
-// they should be used. Otherwise, the wrapper's default methods should be called.
 
 
 }	// glv::

@@ -55,6 +55,9 @@ public:
 
 	const TRect& operator= (const TRect& r);
 
+	/// Get a Rect with dimensions offset from arguments
+	TRect getOffset(T dl, T dt, T dw=0, T dh=0) const { return TRect(l+dl,t+dt,w+dw,h+dh); }
+
 	void copyUnder(const TRect<T>& from, T by=0);
 	void extent(T v);				///< Set extent to be square.
 	void extent(T w, T h);			///< Set extent.
@@ -90,7 +93,8 @@ public:
 	void right(T v);				///< Set right edge preserving width.
 	
 	// Accessors
-	const TRect& rect() const;		///< Returns self
+	TRect& rect(){return *this;}	///< Returns self
+	const TRect& rect() const{return *this;}	///< Returns self
 	
 	T left() const { return l; }	///< Get left edge position
 	T top() const { return t; }		///< Get top edge position
@@ -109,7 +113,8 @@ public:
 	TRect<T> extent() const;
 	
 	/// Calculates the intersection of the two Rects.
-	void intersection(const TRect<T>& check, TRect<T>& intersection) const;
+	void intersection(const TRect<T>& with, TRect<T>& intersection) const;
+	TRect intersection(const TRect<T>& with) const { TRect r; intersection(with,r); return r; }
 	
 	bool intersects(const TRect<T>& rect) const;///< Returns whether the two Rects intersect.
 	bool isVertical() const;					///< Returns true if h > w, false otherwise.
@@ -118,13 +123,13 @@ public:
 	bool withinYBounds(T ymin, T ymax) const;	///< Returns whether the TRect is within the y range.
 
 	/// Called when the width or height change.  Changes in extent are passed in.
-	virtual void onResize(T dx, T dy){}
+	virtual void onResizeRect(T dx, T dy){}
 	
-	void print(FILE * fp=stdout);	///< write about TRect to a file
+	void print(FILE * fp=stdout) const;	///< write about TRect to a file
 	
 private:
 	void onResizeProxy(T dx, T dy){	// calls onResize if at least 1 dimension has changed
-		if(dx!=T(0) || dy!=T(0)) onResize(dx,dy);
+		if(dx!=T(0) || dy!=T(0)) onResizeRect(dx,dy);
 	}
 };
 
@@ -192,7 +197,6 @@ TEM inline void TRect<T>::height(T v){ extent(w, v); }
 TEM inline void TRect<T>::bottom(T v){ t = v - h; }
 TEM inline void TRect<T>::right (T v){ l = v - w; }
 
-TEM inline const TRect<T>& TRect<T>::rect() const { return *this; }
 TEM inline T TRect<T>::right() const { return l + w; }
 TEM inline T TRect<T>::bottom() const { return t + h; }
 TEM inline T TRect<T>::area() const { return w * h; }
@@ -265,7 +269,7 @@ TEM void TRect<T>::intersection(const TRect<T> & check, TRect<T> & inter) const{
 }
 
 
-TEM void TRect<T>::print(FILE * fp){
+TEM void TRect<T>::print(FILE * fp) const {
 	fprintf(fp, "[%.2f, %.2f, %.2f, %.2f]\n", l, t, w, h);
 }
 

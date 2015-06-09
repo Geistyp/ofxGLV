@@ -10,16 +10,10 @@ namespace glv{
 #define VIEW_INIT\
 	Notifier(), SmartObject<View>(),\
 	parent(0), child(0), sibling(0), \
-	draw(cb),\
 	mFlags(Visible | DrawBack | DrawBorder | CropSelf | FocusHighlight | FocusToTop | HitTest | Controllable | Animate), \
-	mStyle(&(Style::standard())), mAnchorX(0), mAnchorY(0), mStretchX(0), mStretchY(0), \
-	mFont(0)
+	mStyle(&(Style::standard())), mAnchorX(0), mAnchorY(0), mStretchX(0), mStretchY(0)
 
-View::View(space_t left, space_t top, space_t width, space_t height, drawCallback cb)
-:	Rect(left, top, width, height), VIEW_INIT
-{}
-
-View::View(const Rect& rect, Place::t anch, drawCallback cb)
+View::View(const Rect& rect, Place::t anch)
 :	Rect(rect), VIEW_INIT
 {
 	anchor(anch);
@@ -56,12 +50,10 @@ View::~View(){
 		if(child->dynamicAlloc()) delete child;
 		else child->remove();
 	}
-
-	delete mFont;
 }
 
 
-void View::add(View& newChild){
+View& View::add(View& newChild){
 
 	View * op = newChild.parent; // old parent
 	
@@ -87,13 +79,15 @@ void View::add(View& newChild){
 		while(lastChild->sibling) lastChild = lastChild->sibling;
 		lastChild->sibling = &newChild;
 	}
+	return *this;
 }
 
 
-void View::add(View * newChild){
+View& View::add(View * newChild){
 	if(newChild){	// valid address?
 		add(*newChild);
 	}
+	return *this;
 }
 
 
@@ -143,6 +137,32 @@ void View::makeLastSibling(){
 }
 
 
+void View::getChildren(std::vector<View*>& children, TraversalAction& predicate){
+	children.clear();
+	View * c = child;
+	while(c){
+		if(predicate(c, 1)) children.push_back(c);
+		c = c->sibling;
+	}
+}
+
+void View::getDescendents(std::vector<View*>& descendents, TraversalAction& predicate){
+	descendents.clear();
+	
+	struct Action : TraversalAction {
+		std::vector<View*>& desc;
+		TraversalAction& pred;
+		
+		Action(std::vector<View*>& d, TraversalAction& p): desc(d), pred(p){}
+		bool operator()(View * v, int depth){
+			if(pred(v,depth)) desc.push_back(v);
+			return true;
+		}
+	} action(descendents, predicate);
+	traverseDepth(action);
+}
+
+
 // Compute translation from this View to target's parent
 // We do this by traversing the tree upwards and accumulating positions.
 bool View::absToRel(View * v, space_t & x, space_t & y) const{
@@ -161,11 +181,120 @@ bool View::absToRel(View * v, space_t & x, space_t & y) const{
 	return false;
 }
 
+//void View::addCallback(Event::t e, eventCallback cb){
+//	if(!hasCallback(e, cb)){
+//		callbackLists[e].push_back(cb);
+//	}
+//}
+//
+//bool View::hasCallback(Event::t e, eventCallback cb) const {
+//	if(hasCallbacks(e)){
+//		const eventCallbackList& l = callbackLists.find(e)->second;
+//		return find(l.begin(), l.end(), cb) != l.end();
+//	}
+//	return false;
+//}
+//
+//
+//bool View::hasCallbacks(Event::t e) const {
+//	return 0!=callbackLists.count(e);
+//}
+//
+//int View::numCallbacks(Event::t e) const{	
+//	const std::map<Event::t, eventCallbackList>::const_iterator it = callbackLists.find(e);
+//	return it != callbackLists.end() ? it->second.size() : 0;
+//}
+//
+//void View::on(Event::t e, eventCallback cb){
+//	if(hasCallbacks(e) && !callbackLists[e].empty())
+//		callbackLists[e].pop_front();
+//	
+//	callbackLists[e].push_front(cb);
+//}
+//
+//void View::removeCallback(Event::t e, eventCallback cb){
+//	if(hasCallbacks(e)){
+//		std::list<eventCallback>::iterator it;
+//		for(it = callbackLists[e].begin(); it != callbackLists[e].end(); ){
+//			if(*it == cb)	it = callbackLists[e].erase(it);
+//			else			it++;
+//		}
+//	}
+//}
+//
+//void View::removeAllCallbacks(Event::t e){
+//	if(hasCallbacks(e)){
+//		while(!callbackLists[e].empty())
+//			callbackLists[e].pop_front();
+//	}
+//}
 
-void View::addCallback(Event::t e, eventCallback cb){
-	if(!hasCallback(e, cb)){
-		callbackLists[e].push_back(cb);
+
+View& View::addHandler(DrawHandler& v){
+	mDrawHandlers.push_back(&v);
+	return *this;
+}
+
+View& View::addHandler(Event::t e, EventHandler& h){
+	mEventHandlersMap(); // create map, if not already created
+	if(!hasEventHandler(e, h)){
+		mEventHandlersMap()[e].push_back(&h);
 	}
+	return *this;
+}
+
+void View::removeHandler(DrawHandler& v){
+	DrawHandlers::iterator it = mDrawHandlers.begin();
+	while(it != mDrawHandlers.end()){
+		if(*it == &v) mDrawHandlers.erase(it++);
+		else ++it;
+	}
+}
+
+void View::removeHandler(Event::t e, EventHandler& h){
+	if(hasEventHandlers(e)){
+		EventHandlers& hs = mEventHandlersMap()[e];
+		EventHandlers::iterator it = hs.begin();
+		while(it != hs.end()){
+			if(*it == &h) hs.erase(it++);
+			else ++it;
+		}
+	}
+}
+
+bool View::hasEventHandler(Event::t e, const EventHandler& h) const {
+	if(hasEventHandlers(e)){
+		const EventHandlers& hs = mEventHandlersMap().find(e)->second;
+		return find(hs.begin(), hs.end(), &h) != hs.end();
+	}
+	return false;
+}
+
+bool View::hasEventHandlers(Event::t e) const {
+	return mEventHandlersMap.created() && 0!=mEventHandlersMap().count(e);
+}
+
+int View::numEventHandlers(Event::t e) const {
+	if(hasEventHandlers(e)){
+		const EventHandlersMap& handlers = mEventHandlersMap();
+		const EventHandlersMap::const_iterator it = handlers.find(e);
+		return it != handlers.end() ? it->second.size() : 0;
+	}
+	return 0;
+}
+
+
+void View::addModels(ModelManager& mm){
+	struct Add : TraversalAction{
+		Add(ModelManager& v): m(v){}
+		bool operator()(View * v, int depth){
+			if(v->hasName()) m.add(v->name(), *v);
+			return true;
+		}
+		ModelManager& m;	
+	} add(mm);
+
+	traverseDepth(add);
 }
 
 
@@ -223,31 +352,35 @@ void View::constrainWithinParent(){
 void View::doDraw(GLV& g){
 	using namespace glv::draw;
 
-//	drawPre();
 	if(enabled(DrawBack)){
 		color(colors().back);
-		rectangle(0, 0, pix(w), pix(h));
+		rectangle(0,0, w,h);
+		/*float verts[4*2] = { 0,0, 0,h, w,0, w,h };
+		Color& colbg = colors().back;
+		//Color& colfg = colors().fore;
+		Color& colbd = colors().border;
+		Color colsh = colbg*0.9 + colbd*0.1;
+		Color cols[4] = { colbg, colsh, colbg, colsh };
+		paint(TriangleStrip, (Point2 *)verts, cols, 4);*/
 	}
 
-	onDraw(g);
-	g.graphicsData().reset();
-	if(draw) draw(this, g);
+	bool drawNext = true;
+	DrawHandlers::iterator it = mDrawHandlers.begin();
+	while(it != mDrawHandlers.end()){
+		DrawHandlers::iterator itnext = ++it; --it;
+		g.graphicsData().reset();
+		drawNext = (*it)->onDraw(*this, g);
+		if(!drawNext) break;
+		it = itnext;
+	}
 
-//	drawPost();
+	if(drawNext){
+		g.graphicsData().reset();
+		onDraw(g);
+	}
+
 	if(enabled(DrawBorder)){
 		float borderWidth = 1.0;
-		
-		// changing brightness doesn't always look so great...
-//		if(enabled(Focused) && enabled(FocusHighlight)){
-//			HSV hsv(colors().border);
-//			hsv.v > 0.5 ? hsv.v -= 0.2 : hsv.v += 0.2;
-//			color(Color(hsv));
-//		}
-//		else{
-//			color(colors().border);
-//		}
-
-		color(colors().border);
 
 		// double border thickness if focused
 		if(enabled(Focused) && enabled(FocusHighlight)){
@@ -255,7 +388,18 @@ void View::doDraw(GLV& g){
 		}
 
 		lineWidth(borderWidth);
-		frame(0, 0, pix(w), pix(h));
+		color(colors().border);
+		const float ds = 0.5; // OpenGL suggests 0.375, but smears with AA enabled
+		frame(ds, ds, pix(w)-ds, pix(h)-ds);
+		//frame(0,0, pix(w)-ds, pix(h)-ds); // hack to give bevelled look
+		
+		/*
+		// This uses slightly different border colors to give bevelled look
+		color(colors().border);
+		shape(draw::LineStrip, 0.5f,h-0.5f, w-0.5f,h-0.5f, w-0.5f,0.5f);
+		color(colors().border.mixRGB(colors().back, 0.5));
+		shape(draw::LineStrip, w-0.5f,0.5f, 0.5f,0.5f, 0.5f,h-0.5f);
+		*/
 	}
 }
 
@@ -270,21 +414,48 @@ View * View::findTarget(space_t &x, space_t &y){
 	space_t rx = x, ry = y;
 	
 	while(n->child){
-	
+
 		// target may be the child or one of its siblings
 		View * sib = n->child;
 		View * match = 0;
 		
+		space_t cx = rx, cy = ry;
+		
 		// Iterate through siblings
 		while(sib){
-			if(sib->containsPoint(x,y) && sib->visible()) match = sib;
+			if(sib->visible() && sib->containsPoint(x,y)){
+				match = sib;
+			}
+//			if(sib->visible()){
+//				if(!sib->enabled(CropChildren) && sib->child){
+//					View * v = sib->child;
+//					
+//					do {
+//						space_t ax = rx - sib->l, ay = ry - sib->t;
+//						if(v != v->findTarget(ax, ay)){
+//							match = v;
+//							cx = ax + match->l;
+//							cy = ay + match->t;
+//							match->print();
+//							//printf("%g %g\n", cx, cy);
+//						}
+//						//printf("%g %g\n", ax, ay);
+//
+//						v = v->sibling;
+//					} while(v);
+//				}
+//				else if(sib->containsPoint(x,y)){
+//					match = sib;
+//					cx = rx; cy = ry;
+//				}
+//			}
 			sib = sib->sibling;
 		}
 		
 		// we found a sibling target; update the relative x & y & run the main while() again
 		if(match){
 			n = match;
-			rx -= n->l; ry -= n->t;	// compute relative coords
+			rx = cx - n->l; ry = cy - n->t;	// compute relative coords
 			
 			if(match->enabled(HitTest)){
 				target = match;
@@ -301,52 +472,50 @@ View * View::findTarget(space_t &x, space_t &y){
 }
 
 
-void View::fit(){
-	View * c = child;
-	if(c){			
-		Rect r(*c);
+void View::fit(bool moveChildren){
+	if(child){			
+		Rect r = unionOfChildren();
+		//printf("%s: ", name().c_str()); r.print(); print();
 		
-		while(c->sibling){
-			c = c->sibling;
-			r.unionOf(*c, r);
+		if(moveChildren){
+			View * v = child;
+			while(v){
+				v->l -= r.l;
+				v->t -= r.t;
+				v = v->sibling;
+			}
+			extent(r.width(), r.height());
 		}
-
-		extent(r.right(), r.bottom());
+		else{
+			set(r);
+		}
 	}
 }
 
 
 void View::focused(bool b){
-	property(Focused, b);
-	if(b && enabled(FocusToTop)) makeLastSibling(); // move to end of chain, so drawn last
+//	property(Focused, b);
+	if(b && enabled(FocusToTop)){
+		// move all nodes in branch to end of sibling chain so drawn last
+		View * v = this;
+		do{
+			v->bringToFront();
+			v = v->parent;
+		} while(v && v->parent);
+	}
 	notify(this, Update::Focus);
 }
 
 
 Font& View::font(){
-	if(!mFont){	mFont = new Font; }
-	return *mFont;
-}
-
-
-bool View::hasCallback(Event::t e, eventCallback cb) const {
-	if(hasCallbacks(e)){
-		const eventCallbackList& l = callbackLists.find(e)->second;
-		return find(l.begin(), l.end(), cb) != l.end();
-	}
-	return false;
-}
-
-
-bool View::hasCallbacks(Event::t e) const {
-	return 0!=callbackLists.count(e);
+	return mFont();
 }
 
 
 View& View::maximize(){
 	if(!enabled(Maximized)){
 		enable(Maximized);
-		mRestore.set(*this);
+		mRestoreRect().set(*this);
 		reanchor(0,0);
 	}
 	return *this;
@@ -397,39 +566,24 @@ void View::move(space_t x, space_t y){
 
 
 View& View::name(const std::string& v){
-	if(isalpha(v[0]) || v[0]=='_'){
-		unsigned i=1;
-		for(; i<v.size(); ++i){
-			if(!isalnum(v[i])) break;
-		}
-		if(v.size()==i) mName=v;
-	}
+//printf("View::name(%s)\n", v.c_str());
+//	if(isalpha(v[0]) || '_' == v[0]){
+//		unsigned i=1;
+//		for(; i<v.size(); ++i){
+//			if(!(isalnum(v[i]) || '_' == v[i])) break;
+//		}
+//		if(v.size()==i) mName=v;
+//	}
+
+	if(glv::isIdentifier(v)) mName=v;
 	return *this;
 }
 
 
-int View::numCallbacks(Event::t e) const{	
-	const std::map<Event::t, eventCallbackList>::const_iterator it = callbackLists.find(e);
-	return it != callbackLists.end() ? it->second.size() : 0;
-}
-
-
-void View::on(Event::t e, eventCallback cb){
-	if(hasCallbacks(e) && !callbackLists[e].empty())
-		callbackLists[e].pop_front();
-	
-	callbackLists[e].push_front(cb);
-}
-
-
-void View::onDraw(GLV& g){ if(draw) draw(this, g); }
-
-bool View::onEvent(Event::t e, GLV& g){ return true; }
-
-
-void View::onResize(space_t dx, space_t dy){
+void View::onResizeRect(space_t dx, space_t dy){
+	onResize(dx,dy);
 	// Move/resize anchored children
-	// This will recursively call onResize's through the entire tree
+	// This will recursively call onResize's through the entire descendency tree
 	View * v = child;	
 	while(v){
 		v->reanchor(dx, dy);
@@ -453,6 +607,7 @@ View& View::pos(Place::t p, space_t x, space_t y){
 		case BL: Rect::pos(x	, y-h  ); break;
 		case BC: Rect::pos(x-w/2, y-h  ); break;
 		case BR: Rect::pos(x-w	, y-h  ); break;
+		default:;
 	}
 	
 	return *this;
@@ -467,14 +622,15 @@ const View * View::posAbs(space_t& al, space_t& at) const{
 void View::printDescendents() const {
 
 	struct A : ConstTraversalAction{
-		bool operator()(const View * v, int depth){
+		bool operator()(const View * v, int depth) const {
 			for(int i=0; i<depth; ++i) printf("|\t");
-			printf("%s %p\n", v->className(), v);
+			const std::string& nm = v->name();
+			printf("%s %p %s\n", v->className(), v, (nm[0] ? "\"" + nm + "\"" : nm).c_str());
 			return true;
 		}	
-	} a;
+	};
 	
-	traverseDepth(a);
+	traverseDepth(A());
 }
 
 void View::printFlags() const{
@@ -494,8 +650,9 @@ void View::reanchor(space_t dx, space_t dy){
 //		//printf("%s (%p): % g % g d(% g, % g) s(% g, % g)\n", className(), this, w,h, dx,dy, mStretchX, mStretchY);
 	}
 	else{
-		mRestore.posAdd(dx * mAnchorX, dy * mAnchorY);
-		mRestore.extent(mRestore.w + dx * mStretchX, mRestore.h + dy * mStretchY);
+		Rect& RR = mRestoreRect();
+		RR.posAdd(dx * mAnchorX, dy * mAnchorY);
+		RR.extent(RR.w + dx * mStretchX, RR.h + dy * mStretchY);
 		if(parent) set(0,0, parent->w, parent->h);
 	}
 }
@@ -518,29 +675,10 @@ void View::rectifyGeometry(){
 }
 
 
-void View::removeCallback(Event::t e, eventCallback cb){
-	if(hasCallbacks(e)){
-		std::list<eventCallback>::iterator it;
-		for(it = callbackLists[e].begin(); it != callbackLists[e].end(); ){
-			if(*it == cb)	it = callbackLists[e].erase(it);
-			else			it++;
-		}
-	}
-}
-
-
-void View::removeAllCallbacks(Event::t e){
-	if(hasCallbacks(e)){
-		while(!callbackLists[e].empty())
-			callbackLists[e].pop_front();
-	}
-}
-
-
 View& View::restore(){
 	if(enabled(Maximized)){
 		disable(Maximized);
-		set(mRestore);
+		set(mRestoreRect());
 	}
 	return *this;
 }
@@ -577,9 +715,15 @@ const View * View::toAbs(space_t& x, space_t& y) const {
  	return v;
 }
 
+View& View::root(){
+	View * v = this;
+	while(v->parent) v = v->parent;
+	return *v;
+}
+
 
 #define TRAVERSE_DEPTH(Qual, qual)\
-void View::traverseDepth(Qual##TraversalAction& action) qual {\
+void View::traverseDepth(qual Qual##TraversalAction& action) qual {\
 	qual View * const root = this;\
 	qual View * n = root;\
 	int depth = 0;\
@@ -606,6 +750,56 @@ void View::traverseDepth(Qual##TraversalAction& action) qual {\
 TRAVERSE_DEPTH(,)
 TRAVERSE_DEPTH(Const, const)
 
-//std::string View::valueString() const { std::string r; valueToString(r); return r; }
+
+Rect View::unionOfChildren() const{
+	View * c = child;
+	if(c){			
+		Rect r(*c);
+		
+		while(c->sibling){
+			c = c->sibling;
+			r.unionOf(*c, r);
+		}
+		return r;
+	}
+	else{
+		return Rect(0,0,0,0);
+	}	
+}
+
+
+Rect View::visibleRegion() const {
+
+	const View * v = this;
+	Rect r(0,0,w,h);
+	space_t lr=0, tr=0; // relative coords as we go towards root
+	
+	while(true){
+		if(v->enabled(Visible)){
+
+			lr -= v->left();
+			tr -= v->top();
+
+			if(v->parent){
+
+				v = v->parent;
+				
+				if(v->enabled(CropChildren) || !v->parent){
+					r.intersection(Rect(lr, tr, v->w, v->h), r);
+					if(r.w <= 0 || r.h <= 0){
+						return Rect(0);
+					}
+				}
+			}
+			else{
+				break;
+			}
+		}
+		else{
+			return Rect(0);
+		}
+	}
+	return r;
+}
 
 } // glv::
