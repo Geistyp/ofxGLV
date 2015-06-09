@@ -155,12 +155,48 @@ public:
 		width = w;
 		height = h;
 		mGLV = new GLV(width, height);
+		mGLV->modelManager().name("ofxGLV");
 		RegisterEvents();
 	}
 
 	void draw()
 	{
 		if (mGLV) mGLV->drawGLV(width, height, ofGetFrameRate());
+	}
+
+	// if ui widget change, call this
+	void refresh()
+	{
+		mGLV->refreshModels();
+	}
+
+	void saveSnapshot(string presetName)
+	{
+		mGLV->modelManager().saveSnapshot(presetName);
+
+		printf("\n%s\n", mGLV->modelManager().snapshotsToString().c_str());
+	}
+
+	bool loadSnapShot(string presetName)
+	{
+		return mGLV->modelManager().loadSnapshot(presetName);
+	}
+
+	void saveToFile(string fileName)
+	{
+		mGLV->modelManager().snapshotsToFile(ofToDataPath(fileName));
+	}
+
+	void loadFromFile(string fileName)
+	{
+		mGLV->modelManager().clearSnapshots();
+		if (mGLV->modelManager().snapshotsFromFile(ofToDataPath(fileName)) == 0)
+		{
+			ofLogError() << "file does not exist";
+			return;
+		}
+		printf("\n%s\n", mGLV->modelManager().snapshotsToString().c_str());
+
 	}
 
 	//--

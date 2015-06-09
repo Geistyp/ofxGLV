@@ -12,11 +12,34 @@ void ofApp::update(){
 
 //--------------------------------------------------------------
 void ofApp::draw(){
+	ofBackground(0);
+	ofDrawBitmapString("Press '1-9' to save preset", 10, 12);
+	ofDrawBitmapString("Press Alt + '1-9' to load preset", 10, 24);
+	ofDrawBitmapString("Press 's' to save and 'l' to load", 10, 36);
+
+	//ofDrawBitmapString(textbox->getValue(), 100, 100);
+	//ofDrawBitmapString(ofToString(numbox->getValue()), 100, 120);
 
 }
 
 //--------------------------------------------------------------
 void ofApp::keyPressed(int key){
+
+	if (key >= '1' && key <= '9')
+	{
+		int k = key - '1';
+		if (!ofGetKeyPressed(OF_KEY_ALT))
+			myGLV.saveSnapshot("preset" + ofToString(k));
+		else
+		{
+			if (!myGLV.loadSnapShot("preset" + ofToString(k)))
+			{
+				ofLogError() << "preset" + ofToString(k) << " not exist ";
+			}
+		}
+	}
+	if (key == 's') myGLV.saveToFile("glv.txt");		// save snapshot first
+	if (key == 'l') myGLV.loadFromFile("glv.txt");
 
 }
 
@@ -68,6 +91,12 @@ void ntSetLabel(const Notification& n){
 }
 
 //////////////////////////////////////////////////////////////////////////
+/*
+ *	Don't use space in ui widget's name, will cause save snapshot error
+ *	eg 
+ *		wrong: textbox->name("Text Box") 
+ *		right: textbox->name("TextBox")
+ */
 void ofApp::setupGUI()
 {
 	// style
@@ -82,26 +111,32 @@ void ofApp::setupGUI()
 	// create element
 	{
 		textbox = shared_ptr<TextView>(new TextView(glv::Rect(250, 16)));
-		textbox->setValue("this is a text box");
+		textbox->setValue("this is a text box").name("TextBox");
 	}
 	{
 		numbox = shared_ptr<NumberDialer>(new NumberDialer(4, 4, 9999, -9999));
-		numbox->setValue(50.0);
+		numbox->setValue(50.0).name("NumBox");
 	}
 	{
-		sliderLabel = shared_ptr<Label>(new Label("Slider Value:"));
+		sliderLabel = shared_ptr<Label>(new Label("SliderValue:"));
 		slider = shared_ptr<Slider>(new Slider(glv::Rect(200, 20)));
 		slider->attach(ntSetLabel, Update::Value, &*sliderLabel);
+		sliderLabel->name("SliderValue");
+		slider->name("Slider");
 	}
 	{
 		checkbox = shared_ptr<Button>(new Button(glv::Rect(50, 20), false));
+		checkbox->name("CheckBox");
 	}
 	{
 		selector = shared_ptr<Buttons>(new Buttons(glv::Rect(80), 2, 2, false, true));
+		selector->name("Selector");
 	}
 	{
 		button = shared_ptr<ofxGLVButton>(new ofxGLVButton(glv::Rect(80, 30)));
 		ofAddListener(button->buttonEvent, this, &ofApp::buttonHitted);
+		// we dont need to save button state in preset
+		//button->name("Button"); 
 	}
 
 	// assign to layout
@@ -111,6 +146,8 @@ void ofApp::setupGUI()
 		<< new Label("Check box:") << *checkbox
 		<< new Label("Selector:") << *selector
 		<< new Label("Button:") << *button;
+
+	myGLV.refresh();
 }
 
 void ofApp::drawGUI(ofEventArgs & args)
