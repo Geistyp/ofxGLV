@@ -2,7 +2,7 @@
 
 //--------------------------------------------------------------
 void ofApp::setup(){
-	
+	selectedItem = dropdown->selectedItem();
 }
 
 //--------------------------------------------------------------
@@ -12,10 +12,27 @@ void ofApp::update(){
 
 //--------------------------------------------------------------
 void ofApp::draw(){
-	ofBackground(0);
+	glv::Color c = colorPicker->getValue();
+	ofBackground(ofFloatColor(c.r, c.g, c.b));
+
 	ofDrawBitmapString("Press '1-9' to save preset", 10, 12);
 	ofDrawBitmapString("Press Alt + '1-9' to load preset", 10, 24);
 	ofDrawBitmapString("Press 's' to save and 'l' to load", 10, 36);
+
+	ofSetColor(ofFloatColor(vColor.r, vColor.g, vColor.b, vColor.a));
+	ofDrawBitmapString("Color Slider:" + ofToString(vColor.r, 1) + "," + ofToString(vColor.g, 1) + "," + ofToString(vColor.b, 1) + "," + ofToString(vColor.a, 1), 350, 150);
+	switch (selectedItem)
+	{
+	case 0: ofCircle(300, 150, 50); break;
+	case 1: ofRect(300 - 50, 150 - 50, 100, 100);	break;
+	case 2: ofTriangle(300, 150 - 50, 300 - 40, 150 + 25, 300 + 40, 150 + 25);	break;
+	default:break;
+	}
+	
+
+
+
+	ofSetColor(255);
 
 	//ofDrawBitmapString(textbox->getValue(), 100, 100);
 	//ofDrawBitmapString(ofToString(numbox->getValue()), 100, 120);
@@ -90,6 +107,13 @@ void ntSetLabel(const Notification& n){
 	l.setValue("Slider Value:" + s.data().toString());
 }
 
+// update selectedItem
+void ntSetSelected(const Notification& n){
+	int& i = *n.receiver<int>();
+	DropDown& d = *n.sender<DropDown>();
+	i = d.selectedItem();
+}
+
 //////////////////////////////////////////////////////////////////////////
 /*
  *	Don't use space in ui widget's name, will cause save snapshot error
@@ -121,7 +145,7 @@ void ofApp::setupGUI()
 		sliderLabel = shared_ptr<Label>(new Label("SliderValue:"));
 		slider = shared_ptr<Slider>(new Slider(glv::Rect(200, 20)));
 		slider->attach(ntSetLabel, Update::Value, &*sliderLabel);
-		sliderLabel->name("SliderValue");
+		//sliderLabel->name("SliderValue");
 		slider->name("Slider");
 	}
 	{
@@ -139,13 +163,39 @@ void ofApp::setupGUI()
 		//button->name("Button"); 
 	}
 
+	{
+		colorPicker = shared_ptr<ColorPicker>(new ColorPicker(glv::Rect(120)));
+		colorPicker->name("ColorPicker");
+	}
+
+	{
+		colorSlider = shared_ptr<ColorSliders>(new ColorSliders(glv::Rect(3*30, 4*30), false, true));
+		colorSlider->name("ColorSlider");
+		colorSlider->attachVariable<float>(vColor.r, 0);
+		colorSlider->attachVariable<float>(vColor.g, 1);
+		colorSlider->attachVariable<float>(vColor.b, 2);
+		colorSlider->attachVariable<float>(vColor.a, 3);	
+	}
+
+	{
+		dropdown = shared_ptr<DropDown>(new DropDown());
+		dropdown->name("DropDown");
+		dropdown->addItem("Circle");
+		dropdown->addItem("Rectangle");
+		dropdown->addItem("Triangle");
+		dropdown->attach(ntSetSelected, Update::Value, &selectedItem);
+	}
+
 	// assign to layout
 	mylayout << new Label("Text:") << *textbox
 		<< new Label("Number Dialer:") << *numbox
 		<< *sliderLabel << *slider
 		<< new Label("Check box:") << *checkbox
 		<< new Label("Selector:") << *selector
-		<< new Label("Button:") << *button;
+		<< new Label("Button:") << *button
+		<< new Label("Color Picker:") << *colorPicker
+		<< new Label("Color Slider:") << *colorSlider
+		<< new Label("Drop Down:") << *dropdown;
 
 	myGLV.refresh();
 }
