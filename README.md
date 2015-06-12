@@ -3,7 +3,6 @@ GLV GUI Toolkit for openframeworks
 
 Extend:
 - Normal button to GLV GUI
-- Will add UTF-8 label for other language (WIP)
 
 ----
 
