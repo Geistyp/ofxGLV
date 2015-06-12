@@ -82,7 +82,8 @@ static int fromToken(
 	return i;
 }
 template<> int fromToken<bool>(bool * dst, int size, int stride, const std::string& src){
-	return fromToken(dst,size,stride, src, "01","%hhi");
+	//return fromToken(dst,size,stride, src, "01","%hhi");
+	return fromToken(dst, size, stride, src, "01", "%c");		// change to "%c" temporary, seem "%hhi" cause stack corrupt in vs compiler
 }
 template<> int fromToken<int>(int * dst, int size, int stride, const std::string& src){
 	return fromToken(dst,size,stride, src, "0123456789-+","%i");
