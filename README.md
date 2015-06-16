@@ -8,5 +8,5 @@ Extend:
 
 http://mat.ucsb.edu/glv/
 
-![alt tag](https://github.com/Geistyp/ofxGLV/blob/master/ofxaddons_thumbnail.png)
+![alt tag](https://github.com/Geistyp/ofxGLV/blob/master/view.png)
 
