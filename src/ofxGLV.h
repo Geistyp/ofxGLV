@@ -148,6 +148,8 @@ public:
 	void mouseScrolled(ofMouseEventArgs & mouse){
 		
 	}
+	void mouseEntered(ofMouseEventArgs & mouse){}
+	void mouseExited(ofMouseEventArgs & mouse){}
 
 	//--
 	void setup(int w, int h)
