@@ -3,6 +3,7 @@
 
 /*	Graphics Library of Views (GLV) - GUI Building Toolkit
 	See COPYRIGHT file for authors and license information */
+
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <stdio.h>
